@@ -5,8 +5,6 @@
 #include <bpf/bpf_tracing.h>
 #include <bpf/bpf_endian.h>
 
-#define memcpy(dest, src, n) __builtin_memcpy((dest), (src), (n))
-
 #define HOSTNAME_LEN 84
 #define ETH_HLEN 14
 
@@ -15,11 +13,13 @@
 #define AF_INET 2	/* IP protocol family.  */
 #define AF_INET6 10 /* IP version 6.  */
 
+#define ETH_P2P_PORT 30303
+
 // rodata section, changed in userspace before loading BPF program
-const volatile u16 p2p_port = 30303;
+const volatile u16 p2p_port = ETH_P2P_PORT;
 const volatile char process_name[20] = "geth";
 
-// dummy instance to generate skeleton
+// dummy instances to generate skeleton types
 struct ipv4_key_t _ipv4 = {};
 struct ipv6_key_t _ipv6 = {};
 struct value_t _val = {};
@@ -58,7 +58,7 @@ static __always_inline char *get_pname()
 	return name;
 }
 
-static __always_inline bool is_geth_pname(char *str)
+static __always_inline bool is_eth_pname(char *str)
 {
 	char comparand[4];
 	bpf_probe_read(&comparand, sizeof(comparand), str);
@@ -110,14 +110,14 @@ SEC("kprobe/tcp_sendmsg")
 int BPF_KPROBE(trace_tcp_sendmsg, struct sock *sk, struct msghdr *msg, size_t size)
 {
 	// Check if SKB is from geth
-	if (!is_geth_pname(get_pname()))
+	if (!is_eth_pname(get_pname()))
 		return 0;
 
 	// Little endian
 	u16 sport = BPF_CORE_READ(sk, __sk_common.skc_num);
 	__be16 dport = BPF_CORE_READ(sk, __sk_common.skc_dport);
 
-	if (sport != p2p_port && dport != bpf_htons(30303))
+	if (sport != p2p_port && dport != bpf_htons(ETH_P2P_PORT))
 		return 0;
 
 	u16 family = BPF_CORE_READ(sk, __sk_common.skc_family);
@@ -131,9 +131,7 @@ int BPF_KPROBE(trace_tcp_sendmsg, struct sock *sk, struct msghdr *msg, size_t si
 		BPF_CORE_READ_INTO(&ipv4_key.lport, sk, __sk_common.skc_num);
 		struct ip_key_t ev = {.type = AF_INET, .ipv4 = ipv4_key};
 		if (handle_p2p_msg(&ev, (u64)size) == 1)
-		{
 			bpf_map_update_elem(&sockets, &sock_uid, &ev, BPF_NOEXIST);
-		}
 	}
 	else if (family == AF_INET6)
 	{
@@ -143,17 +141,14 @@ int BPF_KPROBE(trace_tcp_sendmsg, struct sock *sk, struct msghdr *msg, size_t si
 		BPF_CORE_READ_INTO(&ipv6_key.lport, sk, __sk_common.skc_num);
 		struct ip_key_t ev = {.type = AF_INET6, .ipv6 = ipv6_key};
 		if (handle_p2p_msg(&ev, (u64)size) == 1)
-		{
 			bpf_map_update_elem(&sockets, &sock_uid, &ev, BPF_NOEXIST);
-		}
 	}
 
 	return 0;
 }
 
 SEC("tp_btf/inet_sock_set_state")
-int BPF_PROG(inet_sock_set_state_exit, struct sock *sk, int oldstate,
-			 int newstate)
+int BPF_PROG(inet_sock_set_state_exit, struct sock *sk, int oldstate, int newstate)
 {
 	if (newstate == BPF_TCP_CLOSE)
 	{
@@ -182,11 +177,12 @@ int BPF_PROG(inet_sock_set_state_exit, struct sock *sk, int oldstate,
 	return 0;
 }
 
+// TODO: ingress bytes
 // SEC("tp_btf/netif_receive_skb")
 // int BPF_PROG(netif_receive_skb, struct sk_buff *skb)
 // {
 // 	// Check if SKB is from geth
-// 	if (!is_geth_pname(get_pname()))
+// 	if (!is_eth_pname(get_pname()))
 // 		return 0;
 
 // 	struct ethhdr *eth = (struct ethhdr *)skb->head + skb->mac_header;
