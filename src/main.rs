@@ -16,11 +16,11 @@ use structopt::StructOpt;
 mod p2pflow;
 use p2pflow::*;
 
-type IPv4Key = p2pflow_bss_types::ipv4_key_t;
-type IPv6Key = p2pflow_bss_types::ipv6_key_t;
+type PeerV4 = p2pflow_bss_types::peer_v4_t;
+type PeerV6 = p2pflow_bss_types::peer_v6_t;
 type ValueType = p2pflow_bss_types::value_t;
-unsafe impl Plain for IPv4Key {}
-unsafe impl Plain for IPv6Key {}
+unsafe impl Plain for PeerV4 {}
+unsafe impl Plain for PeerV6 {}
 unsafe impl Plain for ValueType {}
 
 #[derive(Debug, StructOpt)]
@@ -70,17 +70,6 @@ fn get_symbol_address(so_path: &str, fn_name: &str) -> Result<usize> {
     Ok(symbol.address() as usize)
 }
 
-// fn handle_event(_cpu: i32, data: &[u8]) {
-//     let mut event = Event::default();
-//     plain::copy_from_bytes(&mut event, data).expect("Event data buffer was too short");
-
-//     match event.tag {
-//         0 => println!("ip event: {}", Ipv4Addr::from(event.ip)),
-//         1 => println!("host event: {}", String::from_utf8_lossy(&event.hostname)),
-//         _ => {}
-//     }
-// }
-
 fn main() -> Result<()> {
     let opts = Command::from_args();
 
@@ -92,6 +81,7 @@ fn main() -> Result<()> {
     bump_memlock_rlimit()?;
     let mut open_skel = skel_builder.open()?;
 
+    // TODO load process name into rodata
     // Check length (max 20)
     // open_skel.rodata().process_name = opts.pname.into_bytes().iter().map(|&c| c as i8);
     // mem::transmute::<[u8], i8>(opts.pname.into_bytes()).as_slice();
@@ -100,14 +90,6 @@ fn main() -> Result<()> {
     let mut skel = open_skel.load()?;
     let _address = get_symbol_address(&opts.glibc, "getaddrinfo")?;
 
-    // let _tcp_send = skel
-    //     .progs_mut()
-    //     .trace_tcp_sendmsg()
-    //     .attach_kprobe(false, "tcp_sendmsg");
-
-    // let _close = skel.progs_mut().inet_sock_set_state_exit().attach()?;
-
-    // let _rcv = skel.progs_mut().tr().attach()?;
     skel.attach()?;
 
     let maps = skel.maps();
@@ -126,7 +108,7 @@ fn main() -> Result<()> {
         let mut size = 0u32;
 
         for k in trackers_v4.keys() {
-            let mut key = IPv4Key::default();
+            let mut key = PeerV4::default();
             let mut value = ValueType::default();
             plain::copy_from_bytes(&mut key, &k).expect("Couldn't decode key");
             let val = trackers_v4.lookup(&k, MapFlags::ANY).unwrap().unwrap();
@@ -142,7 +124,7 @@ fn main() -> Result<()> {
         }
 
         for k in trackers_v6.keys() {
-            let mut key = IPv6Key::default();
+            let mut key = PeerV6::default();
             let mut value = ValueType::default();
             plain::copy_from_bytes(&mut key, &k).expect("Couldn't decode key");
             let val = trackers_v6.lookup(&k, MapFlags::ANY).unwrap().unwrap();

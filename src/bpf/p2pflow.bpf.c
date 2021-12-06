@@ -20,29 +20,30 @@ const volatile u16 p2p_port = ETH_P2P_PORT;
 const volatile char process_name[20] = "geth";
 
 // dummy instances to generate skeleton types
-struct ipv4_key_t _ipv4 = {};
-struct ipv6_key_t _ipv6 = {};
+struct peer_v4_t _ipv4 = {};
+struct peer_v6_t _ipv6 = {};
 struct value_t _val = {};
 
 struct bpf_map_def SEC("maps") trackers_v4 = {
 	.type = BPF_MAP_TYPE_HASH,
 	.max_entries = 4096,
-	.key_size = sizeof(struct ipv4_key_t),
+	.key_size = sizeof(struct peer_v4_t),
 	.value_size = sizeof(struct value_t) // bytes sent/recvd
 };
 
 struct bpf_map_def SEC("maps") trackers_v6 = {
 	.type = BPF_MAP_TYPE_HASH,
 	.max_entries = 4096,
-	.key_size = sizeof(struct ipv6_key_t),
+	.key_size = sizeof(struct peer_v6_t),
 	.value_size = sizeof(struct value_t) // bytes sent/recvd
 };
 
+// Maps all sockets to their corresponding peers
 struct bpf_map_def SEC("maps") sockets = {
 	.type = BPF_MAP_TYPE_HASH,
 	.max_entries = 4096,
 	.key_size = sizeof(kuid_t),
-	.value_size = sizeof(struct ip_key_t)};
+	.value_size = sizeof(struct peer_t)};
 
 static __always_inline u32 get_pid()
 {
@@ -72,7 +73,7 @@ static __always_inline bool is_eth_pname(char *str)
 // Returns 1 if new entry was created, 0 for update
 //
 // dir: out = true, in = false
-static __always_inline int handle_p2p_msg(bool dir, struct ip_key_t *ev, u64 new_bytes)
+static __always_inline int handle_p2p_msg(bool dir, struct peer_t *ev, u64 new_bytes)
 {
 	struct value_t *val;
 	if (ev->type == AF_INET)
@@ -139,21 +140,21 @@ int BPF_KPROBE(trace_tcp_sendmsg, struct sock *sk, struct msghdr *msg, size_t si
 
 	if (family == AF_INET)
 	{
-		struct ipv4_key_t ipv4_key = {.dport = bpf_ntohs(dport)};
-		BPF_CORE_READ_INTO(&ipv4_key.saddr, sk, __sk_common.skc_rcv_saddr);
-		BPF_CORE_READ_INTO(&ipv4_key.daddr, sk, __sk_common.skc_daddr);
-		BPF_CORE_READ_INTO(&ipv4_key.lport, sk, __sk_common.skc_num);
-		struct ip_key_t ev = {.type = AF_INET, .ipv4 = ipv4_key};
+		struct peer_v4_t peer_v4 = {.dport = bpf_ntohs(dport)};
+		BPF_CORE_READ_INTO(&peer_v4.saddr, sk, __sk_common.skc_rcv_saddr);
+		BPF_CORE_READ_INTO(&peer_v4.daddr, sk, __sk_common.skc_daddr);
+		BPF_CORE_READ_INTO(&peer_v4.lport, sk, __sk_common.skc_num);
+		struct peer_t ev = {.type = AF_INET, .ipv4 = peer_v4};
 		if (handle_p2p_msg(true, &ev, (u64)size) == 1)
 			bpf_map_update_elem(&sockets, &sock_uid, &ev, BPF_NOEXIST);
 	}
 	else if (family == AF_INET6)
 	{
-		struct ipv6_key_t ipv6_key = {.dport = bpf_ntohs(dport)};
-		BPF_CORE_READ_INTO(&ipv6_key.saddr, sk, __sk_common.skc_v6_rcv_saddr.in6_u.u6_addr32);
-		BPF_CORE_READ_INTO(&ipv6_key.daddr, sk, __sk_common.skc_v6_daddr.in6_u.u6_addr32);
-		BPF_CORE_READ_INTO(&ipv6_key.lport, sk, __sk_common.skc_num);
-		struct ip_key_t ev = {.type = AF_INET6, .ipv6 = ipv6_key};
+		struct peer_v6_t peer_v6 = {.dport = bpf_ntohs(dport)};
+		BPF_CORE_READ_INTO(&peer_v6.saddr, sk, __sk_common.skc_v6_rcv_saddr.in6_u.u6_addr32);
+		BPF_CORE_READ_INTO(&peer_v6.daddr, sk, __sk_common.skc_v6_daddr.in6_u.u6_addr32);
+		BPF_CORE_READ_INTO(&peer_v6.lport, sk, __sk_common.skc_num);
+		struct peer_t ev = {.type = AF_INET6, .ipv6 = peer_v6};
 		if (handle_p2p_msg(true, &ev, (u64)size) == 1)
 			bpf_map_update_elem(&sockets, &sock_uid, &ev, BPF_NOEXIST);
 	}
@@ -167,7 +168,7 @@ int BPF_PROG(inet_sock_set_state_exit, struct sock *sk, int oldstate, int newsta
 	if (newstate == BPF_TCP_CLOSE)
 	{
 		kuid_t sock_uid = BPF_CORE_READ(sk, sk_uid);
-		struct ip_key_t *val = bpf_map_lookup_elem(&sockets, &sock_uid);
+		struct peer_t *val = bpf_map_lookup_elem(&sockets, &sock_uid);
 
 		if (!val)
 			return 0;
@@ -214,8 +215,6 @@ int BPF_KPROBE(trace_tcp_cleanup_rbuf, struct sock *sk, int copied)
 	if (copied <= 0)
 		return 0;
 
-	bpf_printk("New segment: %d", read_sport(sk));
-
 	u16 family = BPF_CORE_READ(sk, __sk_common.skc_family);
 	__be16 dport = BPF_CORE_READ(sk, __sk_common.skc_dport);
 
@@ -223,21 +222,21 @@ int BPF_KPROBE(trace_tcp_cleanup_rbuf, struct sock *sk, int copied)
 
 	if (family == AF_INET)
 	{
-		struct ipv4_key_t ipv4_key = {.dport = bpf_ntohs(dport)};
-		BPF_CORE_READ_INTO(&ipv4_key.saddr, sk, __sk_common.skc_rcv_saddr);
-		BPF_CORE_READ_INTO(&ipv4_key.daddr, sk, __sk_common.skc_daddr);
-		BPF_CORE_READ_INTO(&ipv4_key.lport, sk, __sk_common.skc_num);
-		struct ip_key_t ev = {.type = AF_INET, .ipv4 = ipv4_key};
+		struct peer_v4_t peer_v4 = {.dport = bpf_ntohs(dport)};
+		BPF_CORE_READ_INTO(&peer_v4.saddr, sk, __sk_common.skc_rcv_saddr);
+		BPF_CORE_READ_INTO(&peer_v4.daddr, sk, __sk_common.skc_daddr);
+		BPF_CORE_READ_INTO(&peer_v4.lport, sk, __sk_common.skc_num);
+		struct peer_t ev = {.type = AF_INET, .ipv4 = peer_v4};
 		if (handle_p2p_msg(false, &ev, (u64)copied) == 1)
 			bpf_map_update_elem(&sockets, &sock_uid, &ev, BPF_NOEXIST);
 	}
 	else if (family == AF_INET6)
 	{
-		struct ipv6_key_t ipv6_key = {.dport = bpf_ntohs(dport)};
-		BPF_CORE_READ_INTO(&ipv6_key.saddr, sk, __sk_common.skc_v6_rcv_saddr.in6_u.u6_addr32);
-		BPF_CORE_READ_INTO(&ipv6_key.daddr, sk, __sk_common.skc_v6_daddr.in6_u.u6_addr32);
-		BPF_CORE_READ_INTO(&ipv6_key.lport, sk, __sk_common.skc_num);
-		struct ip_key_t ev = {.type = AF_INET6, .ipv6 = ipv6_key};
+		struct peer_v6_t peer_v6 = {.dport = bpf_ntohs(dport)};
+		BPF_CORE_READ_INTO(&peer_v6.saddr, sk, __sk_common.skc_v6_rcv_saddr.in6_u.u6_addr32);
+		BPF_CORE_READ_INTO(&peer_v6.daddr, sk, __sk_common.skc_v6_daddr.in6_u.u6_addr32);
+		BPF_CORE_READ_INTO(&peer_v6.lport, sk, __sk_common.skc_num);
+		struct peer_t ev = {.type = AF_INET6, .ipv6 = peer_v6};
 		if (handle_p2p_msg(false, &ev, (u64)copied) == 1)
 			bpf_map_update_elem(&sockets, &sock_uid, &ev, BPF_NOEXIST);
 	}

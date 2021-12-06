@@ -1,4 +1,4 @@
-struct ipv4_key_t
+struct peer_v4_t
 {
 	u32 saddr;
 	u32 daddr;
@@ -6,7 +6,7 @@ struct ipv4_key_t
 	u16 dport;
 };
 
-struct ipv6_key_t
+struct peer_v6_t
 {
 	unsigned __int128 saddr;
 	unsigned __int128 daddr;
@@ -15,13 +15,13 @@ struct ipv6_key_t
 	u64 __pad__;
 };
 
-struct ip_key_t
+struct peer_t
 {
 	u16 type; // v4 or v6
 	union
 	{
-		struct ipv4_key_t ipv4;
-		struct ipv6_key_t ipv6;
+		struct peer_v4_t ipv4;
+		struct peer_v6_t ipv6;
 	};
 };
 
