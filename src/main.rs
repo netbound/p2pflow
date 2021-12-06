@@ -3,7 +3,6 @@ use libbpf_rs::MapFlags;
 use object::Object;
 use object::ObjectSymbol;
 use plain::Plain;
-use std::convert::TryInto;
 use std::fs;
 use std::net::{Ipv4Addr, Ipv6Addr};
 use std::path::Path;
@@ -101,23 +100,19 @@ fn main() -> Result<()> {
     let mut skel = open_skel.load()?;
     let _address = get_symbol_address(&opts.glibc, "getaddrinfo")?;
 
-    let _tcp_send = skel
-        .progs_mut()
-        .trace_tcp_sendmsg()
-        .attach_kprobe(false, "tcp_sendmsg");
+    // let _tcp_send = skel
+    //     .progs_mut()
+    //     .trace_tcp_sendmsg()
+    //     .attach_kprobe(false, "tcp_sendmsg");
 
-    let _close = skel.progs_mut().inet_sock_set_state_exit().attach()?;
+    // let _close = skel.progs_mut().inet_sock_set_state_exit().attach()?;
 
-    // let _rcv = skel.progs_mut().netif_receive_skb().attach()?;
-
+    // let _rcv = skel.progs_mut().tr().attach()?;
+    skel.attach()?;
 
     let maps = skel.maps();
     let trackers_v4 = maps.trackers_v4();
     let trackers_v6 = maps.trackers_v6();
-
-    // let perf = PerfBufferBuilder::new(skel.maps_mut().events())
-    //     .sample_cb(handle_event)
-    //     .build()?;
 
     let running = Arc::new(AtomicBool::new(true));
     let r = running.clone();
@@ -126,9 +121,6 @@ fn main() -> Result<()> {
         r.store(false, Ordering::SeqCst);
     })?;
 
-    // while running.load(Ordering::SeqCst) {
-    //     perf.poll(Duration::from_millis(100))?;
-    // }
     while running.load(Ordering::SeqCst) {
         sleep(Duration::from_secs(1));
         let mut size = 0u32;
