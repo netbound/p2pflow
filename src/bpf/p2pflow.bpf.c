@@ -191,29 +191,6 @@ int BPF_PROG(inet_sock_set_state_exit, struct sock *sk, int oldstate, int newsta
 	return 0;
 }
 
-// TODO: ingress bytes
-// SEC("kprobe/tcp_v4_rcv")
-// int BPF_KPROBE(trace_tcp_v4_rcv, struct sk_buff *skb)
-// {
-// 	// No need to check if it's a TCP packet
-// 	unsigned char *head = BPF_CORE_READ(skb, head);
-
-// 	u16 tcp_off = BPF_CORE_READ(skb, transport_header);
-// 	struct tcphdr *tcp = (struct tcphdr *)(head + tcp_off);
-
-// 	__be16 source = BPF_CORE_READ(tcp, source);
-// 	__be16 dest = BPF_CORE_READ(tcp, dest);
-// 	// Check if SKB is for geth through port numbers
-// 	if (dest == bpf_htons(p2p_port) || source == bpf_htons(p2p_port))
-// 	{
-// 		bpf_printk("dest %d, src %d", bpf_ntohs(dest), bpf_ntohs(source));
-// 		bpf_printk("New geth packet");
-// 		return 0;
-// 	}
-
-// 	return 0;
-// }
-
 static __always_inline u16 read_sport(struct sock *sk)
 {
 	__u16 sport = 0;
@@ -230,32 +207,36 @@ static __always_inline u16 read_sport(struct sock *sk)
 SEC("kprobe/tcp_cleanup_rbuf")
 int BPF_KPROBE(trace_tcp_cleanup_rbuf, struct sock *sk, int copied)
 {
+	// Check if SKB is from geth
+	if (!is_eth_pname(get_pname()))
+		return 0;
+
 	if (copied <= 0)
 		return 0;
 
 	bpf_printk("New segment: %d", read_sport(sk));
 
 	u16 family = BPF_CORE_READ(sk, __sk_common.skc_family);
-	__be16 lport = BPF_CORE_READ(sk, __sk_common.skc_dport);
+	__be16 dport = BPF_CORE_READ(sk, __sk_common.skc_dport);
 
 	kuid_t sock_uid = BPF_CORE_READ(sk, sk_uid);
 
 	if (family == AF_INET)
 	{
-		struct ipv4_key_t ipv4_key = {.lport = bpf_ntohs(lport)};
+		struct ipv4_key_t ipv4_key = {.dport = bpf_ntohs(dport)};
 		BPF_CORE_READ_INTO(&ipv4_key.saddr, sk, __sk_common.skc_rcv_saddr);
 		BPF_CORE_READ_INTO(&ipv4_key.daddr, sk, __sk_common.skc_daddr);
-		BPF_CORE_READ_INTO(&ipv4_key.dport, sk, __sk_common.skc_num);
+		BPF_CORE_READ_INTO(&ipv4_key.lport, sk, __sk_common.skc_num);
 		struct ip_key_t ev = {.type = AF_INET, .ipv4 = ipv4_key};
 		if (handle_p2p_msg(false, &ev, (u64)copied) == 1)
 			bpf_map_update_elem(&sockets, &sock_uid, &ev, BPF_NOEXIST);
 	}
 	else if (family == AF_INET6)
 	{
-		struct ipv6_key_t ipv6_key = {.lport = bpf_ntohs(lport)};
+		struct ipv6_key_t ipv6_key = {.dport = bpf_ntohs(dport)};
 		BPF_CORE_READ_INTO(&ipv6_key.saddr, sk, __sk_common.skc_v6_rcv_saddr.in6_u.u6_addr32);
 		BPF_CORE_READ_INTO(&ipv6_key.daddr, sk, __sk_common.skc_v6_daddr.in6_u.u6_addr32);
-		BPF_CORE_READ_INTO(&ipv6_key.dport, sk, __sk_common.skc_num);
+		BPF_CORE_READ_INTO(&ipv6_key.lport, sk, __sk_common.skc_num);
 		struct ip_key_t ev = {.type = AF_INET6, .ipv6 = ipv6_key};
 		if (handle_p2p_msg(false, &ev, (u64)copied) == 1)
 			bpf_map_update_elem(&sockets, &sock_uid, &ev, BPF_NOEXIST);
