@@ -210,21 +210,12 @@ int BPF_PROG(trace_inet_sock_set_state, struct sock *sk, int oldstate, int newst
 			return 0;
 
 		// Delete socket from map
-		if (bpf_map_delete_elem(&sockets, &sock_uid) == 0)
-			bpf_printk("Socket deleted from map");
-		else
-			bpf_printk("Error deleting element");
+		bpf_map_delete_elem(&sockets, &sock_uid)
 
 		if (val->type == AF_INET)
-		{
-			if (bpf_map_delete_elem(&trackers_v4, &val->ipv4) == 0)
-				bpf_printk("Closed ipv4 connection: %d", val->ipv4.daddr);
-		}
+			bpf_map_delete_elem(&trackers_v4, &val->ipv4)
 		else if (val->type == AF_INET6)
-		{
-			if (bpf_map_delete_elem(&trackers_v6, &val->ipv6) == 0)
-				bpf_printk("Closed ipv6 connection: %d", val->ipv6.daddr);
-		}
+			bpf_map_delete_elem(&trackers_v6, &val->ipv6)
 
 		return 0;
 	}
