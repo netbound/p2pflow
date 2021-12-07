@@ -1,4 +1,5 @@
 use anyhow::{anyhow, bail, Result};
+use libbpf_rs::Map;
 use libbpf_rs::MapFlags;
 use object::Object;
 use object::ObjectSymbol;
@@ -80,7 +81,8 @@ fn get_symbol_address(so_path: &str, fn_name: &str) -> Result<usize> {
     Ok(symbol.address() as usize)
 }
 
-fn print_v4_info() -> Result<()> {
+fn print_v4_info(trackers_v4: &Map) -> Result<u32> {
+    let mut size = 0u32;
     for k in trackers_v4.keys() {
         let mut key = PeerV4::default();
         let mut value = ValueType::default();
@@ -97,10 +99,11 @@ fn print_v4_info() -> Result<()> {
         size += 1;
     }
 
-    Ok(())
+    Ok(size)
 }
 
-fn print_v6_info() -> Result<()> {
+fn print_v6_info(trackers_v6: &Map) -> Result<u32> {
+    let mut size = 0u32;
     for k in trackers_v6.keys() {
         let mut key = PeerV6::default();
         let mut value = ValueType::default();
@@ -117,7 +120,7 @@ fn print_v6_info() -> Result<()> {
         size += 1;
     }
 
-    Ok(())
+    Ok(size)
 }
 
 fn main() -> Result<()> {
@@ -154,15 +157,16 @@ fn main() -> Result<()> {
     })?;
 
     while running.load(Ordering::SeqCst) {
-        let mut size = 0u32;
+        let mut v4_size = 0u32;
+        let mut v6_size = 0u32;
 
         if !opts.ipv6 {
-            print_v4_info();
+            v4_size = print_v4_info(trackers_v4).unwrap();
         }
         if !opts.ipv4 {
-            print_v6_info();
+            v6_size = print_v6_info(trackers_v6).unwrap();
         }
-        println!("Map length {}", size);
+        println!("Map length {}", v4_size+v6_size);
         sleep(Duration::from_secs(opts.interval));
     }
 
