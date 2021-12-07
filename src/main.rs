@@ -34,9 +34,18 @@ struct Command {
     /// p2p port
     #[structopt(long, short, default_value = "30303")]
     port: u16,
+    /// refresh interval in seconds
+    #[structopt(long, short, default_value = "1")]
+    interval: u64,
     /// process name
     #[structopt(long, short, default_value = "geth")]
     pname: String,
+    /// only IPv4 peer connections
+    #[structopt(long, short)]
+    ipv4: bool,
+    /// only IPv6 peer connections
+    #[structopt(long, short)]
+    ipv6: bool,
 }
 
 fn bump_memlock_rlimit() -> Result<()> {
@@ -104,41 +113,44 @@ fn main() -> Result<()> {
     })?;
 
     while running.load(Ordering::SeqCst) {
-        sleep(Duration::from_secs(1));
         let mut size = 0u32;
 
-        for k in trackers_v4.keys() {
-            let mut key = PeerV4::default();
-            let mut value = ValueType::default();
-            plain::copy_from_bytes(&mut key, &k).expect("Couldn't decode key");
-            let val = trackers_v4.lookup(&k, MapFlags::ANY).unwrap().unwrap();
-            plain::copy_from_bytes(&mut value, &val).expect("Couldn't decode value");
-            println!(
-                "Peer: {:?}:{} - Out: {} MB, In: {} MB",
-                Ipv4Addr::from(key.daddr),
-                key.dport,
-                value.bytes_out / 1024,
-                value.bytes_in / 1024,
-            );
-            size += 1;
+        if !opts.ipv6 {
+            for k in trackers_v4.keys() {
+                let mut key = PeerV4::default();
+                let mut value = ValueType::default();
+                plain::copy_from_bytes(&mut key, &k).expect("Couldn't decode key");
+                let val = trackers_v4.lookup(&k, MapFlags::ANY).unwrap().unwrap();
+                plain::copy_from_bytes(&mut value, &val).expect("Couldn't decode value");
+                println!(
+                    "Peer: {:?}:{} - Out: {} kiB, In: {} kiB",
+                    Ipv4Addr::from(key.daddr),
+                    key.dport,
+                    value.bytes_out / 1024,
+                    value.bytes_in / 1024,
+                );
+                size += 1;
+            }
         }
-
-        for k in trackers_v6.keys() {
-            let mut key = PeerV6::default();
-            let mut value = ValueType::default();
-            plain::copy_from_bytes(&mut key, &k).expect("Couldn't decode key");
-            let val = trackers_v6.lookup(&k, MapFlags::ANY).unwrap().unwrap();
-            plain::copy_from_bytes(&mut value, &val).expect("Couldn't decode value");
-            println!(
-                "Peer: {:?}:{} - Out: {} MB, In: {} MB",
-                Ipv6Addr::from(key.daddr),
-                key.dport,
-                value.bytes_out / 1024,
-                value.bytes_in / 1024,
-            );
-            size += 1;
+        if !opts.ipv4 {
+            for k in trackers_v6.keys() {
+                let mut key = PeerV6::default();
+                let mut value = ValueType::default();
+                plain::copy_from_bytes(&mut key, &k).expect("Couldn't decode key");
+                let val = trackers_v6.lookup(&k, MapFlags::ANY).unwrap().unwrap();
+                plain::copy_from_bytes(&mut value, &val).expect("Couldn't decode value");
+                println!(
+                    "Peer: {:?}:{} - Out: {} kiB, In: {} kiB",
+                    Ipv6Addr::from(key.daddr),
+                    key.dport,
+                    value.bytes_out / 1024,
+                    value.bytes_in / 1024,
+                );
+                size += 1;
+            }
         }
         println!("Map length {}", size);
+        sleep(Duration::from_secs(opts.interval));
     }
 
     Ok(())

@@ -9,6 +9,7 @@
 #define ETH_HLEN 14
 
 #define ETH_P_IP 0x0800
+#define MAX_PEERS 4096
 
 #define AF_INET 2	/* IP protocol family.  */
 #define AF_INET6 10 /* IP version 6.  */
@@ -17,7 +18,7 @@
 
 // rodata section, changed in userspace before loading BPF program
 const volatile u16 p2p_port = ETH_P2P_PORT;
-const volatile char process_name[20] = "geth";
+const volatile char process_name[16] = "geth";
 
 // dummy instances to generate skeleton types
 struct peer_v4_t _ipv4 = {};
@@ -26,14 +27,14 @@ struct value_t _val = {};
 
 struct bpf_map_def SEC("maps") trackers_v4 = {
 	.type = BPF_MAP_TYPE_HASH,
-	.max_entries = 4096,
+	.max_entries = MAX_PEERS,
 	.key_size = sizeof(struct peer_v4_t),
 	.value_size = sizeof(struct value_t) // bytes sent/recvd
 };
 
 struct bpf_map_def SEC("maps") trackers_v6 = {
 	.type = BPF_MAP_TYPE_HASH,
-	.max_entries = 4096,
+	.max_entries = MAX_PEERS,
 	.key_size = sizeof(struct peer_v6_t),
 	.value_size = sizeof(struct value_t) // bytes sent/recvd
 };
@@ -41,7 +42,7 @@ struct bpf_map_def SEC("maps") trackers_v6 = {
 // Maps all sockets to their corresponding peers
 struct bpf_map_def SEC("maps") sockets = {
 	.type = BPF_MAP_TYPE_HASH,
-	.max_entries = 4096,
+	.max_entries = MAX_PEERS,
 	.key_size = sizeof(kuid_t),
 	.value_size = sizeof(struct peer_t)};
 
@@ -59,20 +60,20 @@ static __always_inline char *get_pname()
 	return name;
 }
 
+// Checks if the process name is the one we want.
 static __always_inline bool is_eth_pname(char *str)
 {
-	char comparand[4];
+	char comparand[sizeof(process_name)];
 	bpf_probe_read(&comparand, sizeof(comparand), str);
-	char compare[] = "geth";
 	for (int i = 0; i < 4; ++i)
-		if (compare[i] != comparand[i])
+		if (process_name[i] != comparand[i])
 			return false;
 	return true;
 }
 
 // Returns 1 if new entry was created, 0 for update
 //
-// dir: out = true, in = false
+// dir (direction): out = true, in = false
 static __always_inline int handle_p2p_msg(bool dir, struct peer_t *ev, u64 new_bytes)
 {
 	struct value_t *val;
@@ -121,6 +122,7 @@ static __always_inline int handle_p2p_msg(bool dir, struct peer_t *ev, u64 new_b
 	return 0;
 }
 
+// Kprobe for tracing tcp_sendmsg segments.
 SEC("kprobe/tcp_sendmsg")
 int BPF_KPROBE(trace_tcp_sendmsg, struct sock *sk, struct msghdr *msg, size_t size)
 {
@@ -141,9 +143,7 @@ int BPF_KPROBE(trace_tcp_sendmsg, struct sock *sk, struct msghdr *msg, size_t si
 	if (family == AF_INET)
 	{
 		struct peer_v4_t peer_v4 = {.dport = bpf_ntohs(dport)};
-		BPF_CORE_READ_INTO(&peer_v4.saddr, sk, __sk_common.skc_rcv_saddr);
 		BPF_CORE_READ_INTO(&peer_v4.daddr, sk, __sk_common.skc_daddr);
-		BPF_CORE_READ_INTO(&peer_v4.lport, sk, __sk_common.skc_num);
 		struct peer_t ev = {.type = AF_INET, .ipv4 = peer_v4};
 		if (handle_p2p_msg(true, &ev, (u64)size) == 1)
 			bpf_map_update_elem(&sockets, &sock_uid, &ev, BPF_NOEXIST);
@@ -151,57 +151,13 @@ int BPF_KPROBE(trace_tcp_sendmsg, struct sock *sk, struct msghdr *msg, size_t si
 	else if (family == AF_INET6)
 	{
 		struct peer_v6_t peer_v6 = {.dport = bpf_ntohs(dport)};
-		BPF_CORE_READ_INTO(&peer_v6.saddr, sk, __sk_common.skc_v6_rcv_saddr.in6_u.u6_addr32);
 		BPF_CORE_READ_INTO(&peer_v6.daddr, sk, __sk_common.skc_v6_daddr.in6_u.u6_addr32);
-		BPF_CORE_READ_INTO(&peer_v6.lport, sk, __sk_common.skc_num);
 		struct peer_t ev = {.type = AF_INET6, .ipv6 = peer_v6};
 		if (handle_p2p_msg(true, &ev, (u64)size) == 1)
 			bpf_map_update_elem(&sockets, &sock_uid, &ev, BPF_NOEXIST);
 	}
 
 	return 0;
-}
-
-SEC("tp_btf/inet_sock_set_state")
-int BPF_PROG(inet_sock_set_state_exit, struct sock *sk, int oldstate, int newstate)
-{
-	if (newstate == BPF_TCP_CLOSE)
-	{
-		kuid_t sock_uid = BPF_CORE_READ(sk, sk_uid);
-		struct peer_t *val = bpf_map_lookup_elem(&sockets, &sock_uid);
-
-		if (!val)
-			return 0;
-
-		bpf_map_delete_elem(&sockets, &sock_uid);
-
-		if (val->type == AF_INET)
-		{
-			if (bpf_map_delete_elem(&trackers_v4, &val->ipv4) == 0)
-				bpf_printk("Closed ipv4 connection: %d", val->ipv4.daddr);
-		}
-		else if (val->type == AF_INET6)
-		{
-			if (bpf_map_delete_elem(&trackers_v6, &val->ipv6) == 0)
-				bpf_printk("Closed ipv6 connection: %d", val->ipv6.daddr);
-		}
-
-		return 0;
-	}
-
-	return 0;
-}
-
-static __always_inline u16 read_sport(struct sock *sk)
-{
-	__u16 sport = 0;
-	BPF_CORE_READ_INTO(&sport, sk, __sk_common.skc_num);
-	if (sport == 0)
-	{
-		struct inet_sock *isk = (struct inet_sock *)sk;
-		BPF_CORE_READ_INTO(&sport, isk, inet_sport);
-	}
-	return bpf_ntohs(sport);
 }
 
 // https://elixir.bootlin.com/linux/latest/source/net/ipv4/tcp.c#L1545
@@ -223,9 +179,7 @@ int BPF_KPROBE(trace_tcp_cleanup_rbuf, struct sock *sk, int copied)
 	if (family == AF_INET)
 	{
 		struct peer_v4_t peer_v4 = {.dport = bpf_ntohs(dport)};
-		BPF_CORE_READ_INTO(&peer_v4.saddr, sk, __sk_common.skc_rcv_saddr);
 		BPF_CORE_READ_INTO(&peer_v4.daddr, sk, __sk_common.skc_daddr);
-		BPF_CORE_READ_INTO(&peer_v4.lport, sk, __sk_common.skc_num);
 		struct peer_t ev = {.type = AF_INET, .ipv4 = peer_v4};
 		if (handle_p2p_msg(false, &ev, (u64)copied) == 1)
 			bpf_map_update_elem(&sockets, &sock_uid, &ev, BPF_NOEXIST);
@@ -233,12 +187,46 @@ int BPF_KPROBE(trace_tcp_cleanup_rbuf, struct sock *sk, int copied)
 	else if (family == AF_INET6)
 	{
 		struct peer_v6_t peer_v6 = {.dport = bpf_ntohs(dport)};
-		BPF_CORE_READ_INTO(&peer_v6.saddr, sk, __sk_common.skc_v6_rcv_saddr.in6_u.u6_addr32);
 		BPF_CORE_READ_INTO(&peer_v6.daddr, sk, __sk_common.skc_v6_daddr.in6_u.u6_addr32);
-		BPF_CORE_READ_INTO(&peer_v6.lport, sk, __sk_common.skc_num);
 		struct peer_t ev = {.type = AF_INET6, .ipv6 = peer_v6};
 		if (handle_p2p_msg(false, &ev, (u64)copied) == 1)
 			bpf_map_update_elem(&sockets, &sock_uid, &ev, BPF_NOEXIST);
+	}
+
+	return 0;
+}
+
+// We remove the socket from our socket map if the connection gets closed.
+// https://elixir.bootlin.com/linux/latest/source/include/net/tcp_states.h#L12
+SEC("tp_btf/inet_sock_set_state")
+int BPF_PROG(trace_inet_sock_set_state, struct sock *sk, int oldstate, int newstate)
+{
+	if (newstate == BPF_TCP_CLOSE || BPF_TCP_FIN_WAIT1)
+	{
+		kuid_t sock_uid = BPF_CORE_READ(sk, sk_uid);
+		struct peer_t *val = bpf_map_lookup_elem(&sockets, &sock_uid);
+
+		if (!val)
+			return 0;
+
+		// Delete socket from map
+		if (bpf_map_delete_elem(&sockets, &sock_uid) == 0)
+			bpf_printk("Socket deleted from map");
+		else
+			bpf_printk("Error deleting element");
+
+		if (val->type == AF_INET)
+		{
+			if (bpf_map_delete_elem(&trackers_v4, &val->ipv4) == 0)
+				bpf_printk("Closed ipv4 connection: %d", val->ipv4.daddr);
+		}
+		else if (val->type == AF_INET6)
+		{
+			if (bpf_map_delete_elem(&trackers_v6, &val->ipv6) == 0)
+				bpf_printk("Closed ipv6 connection: %d", val->ipv6.daddr);
+		}
+
+		return 0;
 	}
 
 	return 0;

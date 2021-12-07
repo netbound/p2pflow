@@ -334,7 +334,7 @@ dependencies = [
 
 [[package]]
 name = "p2pflow"
-version = "0.1.0"
+version = "0.0.1"
 dependencies = [
  "anyhow",
  "ctrlc",
