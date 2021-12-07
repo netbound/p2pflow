@@ -19,6 +19,7 @@ use p2pflow::*;
 type PeerV4 = p2pflow_bss_types::peer_v4_t;
 type PeerV6 = p2pflow_bss_types::peer_v6_t;
 type ValueType = p2pflow_bss_types::value_t;
+
 unsafe impl Plain for PeerV4 {}
 unsafe impl Plain for PeerV6 {}
 unsafe impl Plain for ValueType {}
@@ -79,6 +80,46 @@ fn get_symbol_address(so_path: &str, fn_name: &str) -> Result<usize> {
     Ok(symbol.address() as usize)
 }
 
+fn print_v4_info() -> Result<()> {
+    for k in trackers_v4.keys() {
+        let mut key = PeerV4::default();
+        let mut value = ValueType::default();
+        plain::copy_from_bytes(&mut key, &k).expect("Couldn't decode key");
+        let val = trackers_v4.lookup(&k, MapFlags::ANY).unwrap().unwrap();
+        plain::copy_from_bytes(&mut value, &val).expect("Couldn't decode value");
+        println!(
+            "Peer: {:?}:{} - Out: {} kiB, In: {} kiB",
+            Ipv4Addr::from(key.daddr),
+            key.dport,
+            value.bytes_out / 1024,
+            value.bytes_in / 1024,
+        );
+        size += 1;
+    }
+
+    Ok(())
+}
+
+fn print_v6_info() -> Result<()> {
+    for k in trackers_v6.keys() {
+        let mut key = PeerV6::default();
+        let mut value = ValueType::default();
+        plain::copy_from_bytes(&mut key, &k).expect("Couldn't decode key");
+        let val = trackers_v6.lookup(&k, MapFlags::ANY).unwrap().unwrap();
+        plain::copy_from_bytes(&mut value, &val).expect("Couldn't decode value");
+        println!(
+            "Peer: {:?}:{} - Out: {} kiB, In: {} kiB",
+            Ipv6Addr::from(key.daddr),
+            key.dport,
+            value.bytes_out / 1024,
+            value.bytes_in / 1024,
+        );
+        size += 1;
+    }
+
+    Ok(())
+}
+
 fn main() -> Result<()> {
     let opts = Command::from_args();
 
@@ -116,38 +157,10 @@ fn main() -> Result<()> {
         let mut size = 0u32;
 
         if !opts.ipv6 {
-            for k in trackers_v4.keys() {
-                let mut key = PeerV4::default();
-                let mut value = ValueType::default();
-                plain::copy_from_bytes(&mut key, &k).expect("Couldn't decode key");
-                let val = trackers_v4.lookup(&k, MapFlags::ANY).unwrap().unwrap();
-                plain::copy_from_bytes(&mut value, &val).expect("Couldn't decode value");
-                println!(
-                    "Peer: {:?}:{} - Out: {} kiB, In: {} kiB",
-                    Ipv4Addr::from(key.daddr),
-                    key.dport,
-                    value.bytes_out / 1024,
-                    value.bytes_in / 1024,
-                );
-                size += 1;
-            }
+            print_v4_info();
         }
         if !opts.ipv4 {
-            for k in trackers_v6.keys() {
-                let mut key = PeerV6::default();
-                let mut value = ValueType::default();
-                plain::copy_from_bytes(&mut key, &k).expect("Couldn't decode key");
-                let val = trackers_v6.lookup(&k, MapFlags::ANY).unwrap().unwrap();
-                plain::copy_from_bytes(&mut value, &val).expect("Couldn't decode value");
-                println!(
-                    "Peer: {:?}:{} - Out: {} kiB, In: {} kiB",
-                    Ipv6Addr::from(key.daddr),
-                    key.dport,
-                    value.bytes_out / 1024,
-                    value.bytes_in / 1024,
-                );
-                size += 1;
-            }
+            print_v6_info();
         }
         println!("Map length {}", size);
         sleep(Duration::from_secs(opts.interval));

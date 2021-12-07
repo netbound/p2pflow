@@ -16,8 +16,10 @@ You can verify whether your kernel was built with BTF enabled:
 ```bash
 cat /boot/config-$(uname -r) | grep CONFIG_DEBUG_INFO_BTF
 ```
-## Build
-### Cargo
+## Install & Build
+```
+git clone --recurse-submodules -j8 https://github.com/netbound/p2pflow
+```
 
 ```bash
 cargo build --release
