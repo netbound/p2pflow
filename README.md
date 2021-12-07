@@ -19,9 +19,7 @@ cat /boot/config-$(uname -r) | grep CONFIG_DEBUG_INFO_BTF
 ## Install & Build
 ```
 git clone --recurse-submodules -j8 https://github.com/netbound/p2pflow
-```
-
-```bash
+cd p2pflow
 cargo build --release
 ```
 
