@@ -1,6 +1,6 @@
 # p2pflow
 
-> An eBPF application to monitor Ethereum p2p network traffic, built with eBPF.
+> An eBPF application to monitor Ethereum p2p network traffic.
 
 ## Requirements
 
