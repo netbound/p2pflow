@@ -210,12 +210,12 @@ int BPF_PROG(trace_inet_sock_set_state, struct sock *sk, int oldstate, int newst
 			return 0;
 
 		// Delete socket from map
-		bpf_map_delete_elem(&sockets, &sock_uid)
+		bpf_map_delete_elem(&sockets, &sock_uid);
 
 		if (val->type == AF_INET)
-			bpf_map_delete_elem(&trackers_v4, &val->ipv4)
+			bpf_map_delete_elem(&trackers_v4, &val->ipv4);
 		else if (val->type == AF_INET6)
-			bpf_map_delete_elem(&trackers_v6, &val->ipv6)
+			bpf_map_delete_elem(&trackers_v6, &val->ipv6);
 
 		return 0;
 	}
