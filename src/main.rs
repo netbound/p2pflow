@@ -1,33 +1,22 @@
 use anyhow::{anyhow, bail, Result};
 use libbpf_rs::Map;
-use libbpf_rs::MapFlags;
 use object::Object;
 use object::ObjectSymbol;
 use plain::Plain;
-use std::collections::HashMap;
 use std::sync::atomic::AtomicBool;
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
-use std::{
-    fs, io,
-    net::{Ipv4Addr, Ipv6Addr},
-    path::Path,
-    vec::Vec,
-};
+use std::{fs, io, path::Path};
 use structopt::StructOpt;
 use termion::{event::Key, input::MouseTerminal, raw::IntoRawMode, screen::AlternateScreen};
-use tui::{
-    backend::TermionBackend,
-    layout::{Constraint, Layout},
-    style::{Color, Modifier, Style},
-    widgets::{Block, Borders, Cell, Row, Table, TableState},
-    Terminal,
-};
+use tui::{backend::TermionBackend, widgets::TableState, Terminal};
 
+mod display;
 mod event;
 #[path = "bpf/.output/p2pflow.skel.rs"]
 mod p2pflow;
 
+use display::*;
 use event::*;
 use p2pflow::*;
 
@@ -64,12 +53,6 @@ struct Command {
     ipv6: bool,
 }
 
-#[derive(Debug, Clone)]
-enum PeerType {
-    PeerV4,
-    PeerV6,
-}
-
 fn bump_memlock_rlimit() -> Result<()> {
     let rlimit = libc::rlimit {
         rlim_cur: 128 << 20,
@@ -102,7 +85,7 @@ fn get_symbol_address(so_path: &str, fn_name: &str) -> Result<usize> {
 }
 
 #[derive(Clone)]
-struct App<'a> {
+pub struct App<'a> {
     state: TableState,
     v4_peers: Option<&'a Map>,
     v6_peers: Option<&'a Map>,
@@ -218,81 +201,7 @@ fn main() -> Result<()> {
     })?;
 
     while running.load(Ordering::SeqCst) {
-        terminal.draw(|f| {
-            let rects = Layout::default()
-                .constraints([Constraint::Percentage(100)].as_ref())
-                .margin(1)
-                .split(f.size());
-
-            let selected_style = Style::default().add_modifier(Modifier::REVERSED);
-            let normal_style = Style::default().add_modifier(Modifier::BOLD);
-            let header_cells = ["IP address", "Port", "kB in", "kB out"]
-                .iter()
-                .map(|h| Cell::from(*h).style(Style::default().fg(Color::Yellow)));
-            let header = Row::new(header_cells)
-                .style(normal_style)
-                .height(1)
-                .bottom_margin(1);
-
-            let mut rows = Vec::new();
-
-            if let Some(v4_peers) = app.v4_peers {
-                let mut v4_rows: Vec<Row> = v4_peers.keys().map(|k| {
-                    let mut key = PeerV4::default();
-                    let mut value = ValueType::default();
-
-                    plain::copy_from_bytes(&mut key, &k).expect("Couldn't decode key");
-                    let val = trackers_v4.lookup(&k, MapFlags::ANY).unwrap().unwrap();
-                    plain::copy_from_bytes(&mut value, &val).expect("Couldn't decode value");
-                    let entry = vec![
-                        Ipv4Addr::from(key.daddr).to_string(),
-                        key.dport.to_string(),
-                        (value.bytes_in / 1024).to_string(),
-                        (value.bytes_out / 1024).to_string(),
-                    ];
-
-                    let cells = entry.iter().map(|c| Cell::from(c.clone()));
-                    Row::new(cells).height(1)
-                }).collect();
-
-                rows.append(&mut v4_rows);
-            }
-
-            if let Some(v6_peers) = app.v6_peers {
-                let mut v6_rows: Vec<Row> = v6_peers.keys().map(|k| {
-                    let mut key = PeerV6::default();
-                    let mut value = ValueType::default();
-
-                    plain::copy_from_bytes(&mut key, &k).expect("Couldn't decode key");
-                    let val = trackers_v6.lookup(&k, MapFlags::ANY).unwrap().unwrap();
-                    plain::copy_from_bytes(&mut value, &val).expect("Couldn't decode value");
-                    let entry = vec![
-                        Ipv6Addr::from(key.daddr).to_string(),
-                        key.dport.to_string(),
-                        (value.bytes_in / 1024).to_string(),
-                        (value.bytes_out / 1024).to_string(),
-                    ];
-
-                    let cells = entry.iter().map(|c| Cell::from(c.clone()));
-                    Row::new(cells).height(1)
-                }).collect();
-
-                rows.append(&mut v6_rows);
-            }
-
-            let t = Table::new(rows.into_iter())
-                .header(header)
-                .block(Block::default().borders(Borders::ALL).title("p2pflow"))
-                .highlight_style(selected_style)
-                // .highlight_symbol("* ")
-                .widths(&[
-                    Constraint::Percentage(25),
-                    Constraint::Percentage(25),
-                    Constraint::Percentage(25),
-                    Constraint::Percentage(25),
-                ]);
-            f.render_stateful_widget(t, rects[0], &mut app.state);
-        })?;
+        draw_terminal(&mut terminal, &mut app)?;
 
         match events.next()? {
             Event::Input(key) => match key {
