@@ -36,7 +36,12 @@ cargo build --release
 ```
 
 ## Run
-Running requires root privileges for loading the BPF program into the kernel.
+Running requires root privileges for loading the BPF program into the kernel and attaching it to the proper hooks.
 ```bash
 sudo ./target/release/p2pflow --port 30303 --pname geth
 ```
+Or
+```bash
+make install
+```
+This will install the binary in `$HOME/.cargo/bin`, and adds the `cap_sys_admin` capability to let it run without sudo.
