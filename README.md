@@ -21,6 +21,8 @@ You can generate it with `bpftool` (part of `linux-tools`):
 ```bash
 bpftool btf dump file /sys/kernel/btf/vmlinux format c > src/bpf/vmlinux.h
 ```
+Or run `make vmlinux`.
+
 You can verify whether your kernel was built with BTF (BPF Type Format) enabled:
 
 ```bash
