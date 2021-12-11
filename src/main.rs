@@ -5,9 +5,6 @@ use object::Object;
 use object::ObjectSymbol;
 use plain::Plain;
 use std::ffi::CString;
-use std::sync::atomic::AtomicBool;
-use std::sync::atomic::Ordering;
-use std::sync::Arc;
 use std::{fs, io, path::Path};
 use structopt::StructOpt;
 use termion::{event::Key, input::MouseTerminal, raw::IntoRawMode, screen::AlternateScreen};
@@ -90,6 +87,8 @@ fn get_symbol_address(so_path: &str, fn_name: &str) -> Result<usize> {
 
 #[derive(Clone)]
 pub struct App<'a> {
+    process_name: String,
+    process_port: u16,
     state: TableState,
     v4_peers: Option<&'a Map>,
     v6_peers: Option<&'a Map>,
@@ -97,8 +96,10 @@ pub struct App<'a> {
 }
 
 impl<'a> App<'a> {
-    fn new() -> App<'a> {
+    fn new(process_name: String, process_port: u16) -> App<'a> {
         App {
+            process_name,
+            process_port,
             state: TableState::default(),
             v4_peers: None,
             v6_peers: None,
@@ -167,7 +168,7 @@ fn main() -> Result<()> {
     bump_memlock_rlimit()?;
     let mut open_skel = skel_builder.open()?;
 
-    let str = CString::new(opts.pname).unwrap();
+    let str = CString::new(opts.pname.clone()).unwrap();
     let mut buf: [i8; 16] = [0; 16];
 
     let buf_ptr = buf.as_mut_ptr();
@@ -176,7 +177,6 @@ fn main() -> Result<()> {
         buf_ptr.copy_from(str.as_ptr(), 16);
     }
 
-    // TODO: load process name into rodata
     open_skel.rodata().p2p_port = opts.port;
     open_skel.rodata().process_name = buf;
 
@@ -185,7 +185,6 @@ fn main() -> Result<()> {
 
     skel.attach()?;
 
-    // TODO: Size of maps doesn't change
     let maps = skel.maps();
     let trackers_v4 = maps.trackers_v4();
     let trackers_v6 = maps.trackers_v6();
@@ -197,7 +196,7 @@ fn main() -> Result<()> {
     let mut terminal = Terminal::new(backend)?;
 
     let events = Events::new();
-    let mut app = App::new();
+    let mut app = App::new(opts.pname, opts.port);
 
     if !opts.ipv6 {
         app.set_v4_peers(trackers_v4);
@@ -208,17 +207,7 @@ fn main() -> Result<()> {
 
     app.resolver.start();
 
-    // let mut ui = Ui::new(&mut terminal);
-
-    // What does this do?
-    let running = Arc::new(AtomicBool::new(true));
-    let r = running.clone();
-
-    ctrlc::set_handler(move || {
-        r.store(false, Ordering::SeqCst);
-    })?;
-
-    while running.load(Ordering::SeqCst) {
+    loop {
         draw_terminal(&mut terminal, &mut app)?;
 
         match events.next()? {

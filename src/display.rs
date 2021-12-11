@@ -130,7 +130,7 @@ pub fn draw_terminal(
         let peer_count = rows.len();
 
         let header_text = Span::styled(
-            format!("p2pflow [{} peers]", peer_count),
+            format!("Process: {} - P2P Port: {} [{} peers]", app.process_name, app.process_port, peer_count),
             Style::default()
                 .fg(Color::Cyan)
                 .add_modifier(Modifier::BOLD),
