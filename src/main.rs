@@ -4,6 +4,7 @@ use libbpf_rs::Map;
 use object::Object;
 use object::ObjectSymbol;
 use plain::Plain;
+use std::ffi::CString;
 use std::sync::atomic::AtomicBool;
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
@@ -13,14 +14,14 @@ use termion::{event::Key, input::MouseTerminal, raw::IntoRawMode, screen::Altern
 use tui::{backend::TermionBackend, widgets::TableState, Terminal};
 
 mod display;
-mod net;
 mod event;
+mod net;
 #[path = "bpf/.output/p2pflow.skel.rs"]
 mod p2pflow;
 
 use display::*;
-use net::*;
 use event::*;
+use net::*;
 use p2pflow::*;
 
 type PeerV4 = p2pflow_bss_types::peer_v4_t;
@@ -166,8 +167,18 @@ fn main() -> Result<()> {
     bump_memlock_rlimit()?;
     let mut open_skel = skel_builder.open()?;
 
+    let str = CString::new(opts.pname).unwrap();
+    let mut buf: [i8; 16] = [0; 16];
+
+    let buf_ptr = buf.as_mut_ptr();
+
+    unsafe {
+        buf_ptr.copy_from(str.as_ptr(), 16);
+    }
+
     // TODO: load process name into rodata
     open_skel.rodata().p2p_port = opts.port;
+    open_skel.rodata().process_name = buf;
 
     let mut skel = open_skel.load()?;
     let _address = get_symbol_address(&opts.glibc, "getaddrinfo")?;
@@ -194,7 +205,7 @@ fn main() -> Result<()> {
     if !opts.ipv4 {
         app.set_v6_peers(trackers_v6);
     }
-    
+
     app.resolver.start();
 
     // let mut ui = Ui::new(&mut terminal);
