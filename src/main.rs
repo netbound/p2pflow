@@ -37,9 +37,6 @@ struct Command {
     /// glibc path
     #[structopt(long, short, default_value = "/lib/x86_64-linux-gnu/libc.so.6")]
     glibc: String,
-    /// p2p port
-    #[structopt(long, short, default_value = "30303")]
-    port: u16,
     /// refresh interval in seconds
     #[structopt(long, short, default_value = "1")]
     interval: u64,
@@ -88,7 +85,6 @@ fn get_symbol_address(so_path: &str, fn_name: &str) -> Result<usize> {
 #[derive(Clone)]
 pub struct App<'a> {
     process_name: String,
-    process_port: u16,
     state: TableState,
     v4_peers: Option<&'a Map>,
     v6_peers: Option<&'a Map>,
@@ -96,10 +92,9 @@ pub struct App<'a> {
 }
 
 impl<'a> App<'a> {
-    fn new(process_name: String, process_port: u16) -> App<'a> {
+    fn new(process_name: String) -> App<'a> {
         App {
             process_name,
-            process_port,
             state: TableState::default(),
             v4_peers: None,
             v6_peers: None,
@@ -177,7 +172,6 @@ fn main() -> Result<()> {
         buf_ptr.copy_from(str.as_ptr(), 16);
     }
 
-    open_skel.rodata().p2p_port = opts.port;
     open_skel.rodata().process_name = buf;
 
     let mut skel = open_skel.load()?;
@@ -196,7 +190,7 @@ fn main() -> Result<()> {
     let mut terminal = Terminal::new(backend)?;
 
     let events = Events::new();
-    let mut app = App::new(opts.pname, opts.port);
+    let mut app = App::new(opts.pname);
 
     if !opts.ipv6 {
         app.set_v4_peers(trackers_v4);

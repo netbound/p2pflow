@@ -14,10 +14,7 @@
 #define AF_INET 2	/* IP protocol family.  */
 #define AF_INET6 10 /* IP version 6.  */
 
-#define ETH_P2P_PORT 30303
-
 // rodata section, changed in userspace before loading BPF program
-const volatile u16 p2p_port = ETH_P2P_PORT;
 const volatile char process_name[16] = "geth";
 
 // dummy instances to generate skeleton types
@@ -130,13 +127,7 @@ int BPF_KPROBE(trace_tcp_sendmsg, struct sock *sk, struct msghdr *msg, size_t si
 	if (!is_eth_pname(get_pname()))
 		return 0;
 
-	// Little endian
-	u16 sport = BPF_CORE_READ(sk, __sk_common.skc_num);
 	__be16 dport = BPF_CORE_READ(sk, __sk_common.skc_dport);
-
-	if (sport != p2p_port && dport != bpf_htons(ETH_P2P_PORT))
-		return 0;
-
 	u16 family = BPF_CORE_READ(sk, __sk_common.skc_family);
 	kuid_t sock_uid = BPF_CORE_READ(sk, sk_uid);
 
@@ -171,14 +162,8 @@ int BPF_KPROBE(trace_tcp_cleanup_rbuf, struct sock *sk, int copied)
 	if (copied <= 0)
 		return 0;
 
-	u16 sport = BPF_CORE_READ(sk, __sk_common.skc_num);
 	__be16 dport = BPF_CORE_READ(sk, __sk_common.skc_dport);
-
-	if (sport != p2p_port && dport != bpf_htons(ETH_P2P_PORT))
-		return 0;
-
 	u16 family = BPF_CORE_READ(sk, __sk_common.skc_family);
-
 	kuid_t sock_uid = BPF_CORE_READ(sk, sk_uid);
 
 	if (family == AF_INET)

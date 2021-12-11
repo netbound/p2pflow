@@ -12,23 +12,6 @@ use tui::{
 
 use crate::{net::Resolver, App, PeerV4, PeerV6, ValueType};
 
-// pub struct Ui<'a> {
-//     terminal: &'a mut Terminal<
-//         TermionBackend<AlternateScreen<MouseTerminal<RawTerminal<std::io::Stdout>>>>,
-//     >,
-//     // pub app: &'a mut App<'a>,
-// }
-
-// impl<'a> Ui<'a> {
-//     pub fn new(
-//         terminal: &'a mut Terminal<
-//             TermionBackend<AlternateScreen<MouseTerminal<RawTerminal<std::io::Stdout>>>>,
-//         >,
-//         // app: &'a mut App<'a>,
-//     ) -> Ui<'a> {
-//         Ui { terminal }
-//     }
-
 fn gen_v4_rows<'a>(v4_peers: &'a Map, resolver: &Resolver) -> Vec<Row<'a>> {
     v4_peers
         .keys()
@@ -130,7 +113,7 @@ pub fn draw_terminal(
         let peer_count = rows.len();
 
         let header_text = Span::styled(
-            format!("Process: {} - P2P Port: {} [{} peers]", app.process_name, app.process_port, peer_count),
+            format!("Process: {} [{} peers]", app.process_name, peer_count),
             Style::default()
                 .fg(Color::Cyan)
                 .add_modifier(Modifier::BOLD),
