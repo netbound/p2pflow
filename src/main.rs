@@ -1,4 +1,5 @@
 use anyhow::{anyhow, bail, Result};
+use async_std::task::block_on;
 use libbpf_rs::Map;
 use object::Object;
 use object::ObjectSymbol;
@@ -12,11 +13,13 @@ use termion::{event::Key, input::MouseTerminal, raw::IntoRawMode, screen::Altern
 use tui::{backend::TermionBackend, widgets::TableState, Terminal};
 
 mod display;
+mod net;
 mod event;
 #[path = "bpf/.output/p2pflow.skel.rs"]
 mod p2pflow;
 
 use display::*;
+use net::*;
 use event::*;
 use p2pflow::*;
 
@@ -89,7 +92,7 @@ pub struct App<'a> {
     state: TableState,
     v4_peers: Option<&'a Map>,
     v6_peers: Option<&'a Map>,
-    // new_items: HashMap<PeerType, ValueType>,
+    resolver: Resolver,
 }
 
 impl<'a> App<'a> {
@@ -98,7 +101,7 @@ impl<'a> App<'a> {
             state: TableState::default(),
             v4_peers: None,
             v6_peers: None,
-            // new_items: HashMap::new(),
+            resolver: block_on(Resolver::new()),
         }
     }
 
@@ -191,6 +194,10 @@ fn main() -> Result<()> {
     if !opts.ipv4 {
         app.set_v6_peers(trackers_v6);
     }
+    
+    app.resolver.start();
+
+    // let mut ui = Ui::new(&mut terminal);
 
     // What does this do?
     let running = Arc::new(AtomicBool::new(true));
