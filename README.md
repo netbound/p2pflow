@@ -40,7 +40,7 @@ cargo build --release
 ## Run
 Running requires root privileges for loading the BPF program into the kernel and attaching it to the proper hooks.
 ```bash
-sudo ./target/release/p2pflow --port 30303 --pname geth
+sudo ./target/release/p2pflow --process geth
 ```
 Or
 ```bash

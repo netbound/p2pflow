@@ -42,7 +42,7 @@ struct Command {
     interval: u64,
     /// process name
     #[structopt(long, short, default_value = "geth")]
-    pname: String,
+    process: String,
     /// only IPv4 peer connections
     #[structopt(long, short)]
     ipv4: bool,
@@ -163,7 +163,7 @@ fn main() -> Result<()> {
     bump_memlock_rlimit()?;
     let mut open_skel = skel_builder.open()?;
 
-    let str = CString::new(opts.pname.clone()).unwrap();
+    let str = CString::new(opts.process.clone()).unwrap();
     let mut buf: [i8; 16] = [0; 16];
 
     let buf_ptr = buf.as_mut_ptr();
@@ -190,7 +190,7 @@ fn main() -> Result<()> {
     let mut terminal = Terminal::new(backend)?;
 
     let events = Events::new();
-    let mut app = App::new(opts.pname);
+    let mut app = App::new(opts.process);
 
     if !opts.ipv6 {
         app.set_v4_peers(trackers_v4);
