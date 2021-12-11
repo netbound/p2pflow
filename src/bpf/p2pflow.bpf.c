@@ -178,7 +178,6 @@ int BPF_KPROBE(trace_tcp_cleanup_rbuf, struct sock *sk, int copied)
 		return 0;
 
 	u16 family = BPF_CORE_READ(sk, __sk_common.skc_family);
-	__be16 dport = BPF_CORE_READ(sk, __sk_common.skc_dport);
 
 	kuid_t sock_uid = BPF_CORE_READ(sk, sk_uid);
 
