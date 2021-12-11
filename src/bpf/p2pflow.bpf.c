@@ -171,6 +171,12 @@ int BPF_KPROBE(trace_tcp_cleanup_rbuf, struct sock *sk, int copied)
 	if (copied <= 0)
 		return 0;
 
+	u16 sport = BPF_CORE_READ(sk, __sk_common.skc_num);
+	__be16 dport = BPF_CORE_READ(sk, __sk_common.skc_dport);
+
+	if (sport != p2p_port && dport != bpf_htons(ETH_P2P_PORT))
+		return 0;
+
 	u16 family = BPF_CORE_READ(sk, __sk_common.skc_family);
 	__be16 dport = BPF_CORE_READ(sk, __sk_common.skc_dport);
 
