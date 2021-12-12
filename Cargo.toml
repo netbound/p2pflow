@@ -1,6 +1,6 @@
 [package]
 name = "p2pflow"
-version = "0.0.4"
+version = "0.0.5"
 authors = ["Jonas Bostoen <jonas.bostoen@hotmail.com>"]
 edition = "2018"
 license = "GPL-2.0 OR BSD-3-Clause"
