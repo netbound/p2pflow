@@ -18,6 +18,7 @@ fn gen_rows<'a>(items: &Vec<Item>, resolver: &Resolver) -> Vec<Row<'a>> {
             format!("{}:{}", i.ip.to_string(), i.port.to_string()),
             v.to_owned(),
             resolver.resolve_ip(i.ip),
+            format!("{}ps / {}ps", gen_bytes_str(i.tx_rate), gen_bytes_str(i.rx_rate)),
             format!("{} / {}", gen_bytes_str(i.tot_tx), gen_bytes_str(i.tot_rx))
         ];
         let cells = entry.iter().map(|c| Cell::from(c.clone()));
@@ -41,7 +42,7 @@ pub fn draw_terminal(
 
         let selected_style = Style::default().add_modifier(Modifier::REVERSED);
         let normal_style = Style::default().add_modifier(Modifier::BOLD);
-        let header_cells = ["Peer", "Type", "Name", "Total tx / rx"]
+        let header_cells = ["Peer", "Type", "Name", "Rate tx / rx", "Total tx / rx"]
             .iter()
             .map(|h| Cell::from(*h).style(Style::default().fg(Color::Yellow)));
         let header = Row::new(header_cells)
@@ -72,7 +73,8 @@ pub fn draw_terminal(
             .widths(&[
                 Constraint::Percentage(20),
                 Constraint::Percentage(10),
-                Constraint::Percentage(50),
+                Constraint::Percentage(30),
+                Constraint::Percentage(20),
                 Constraint::Percentage(20),
             ]);
 
@@ -84,14 +86,19 @@ pub fn draw_terminal(
 }
 // }
 
-pub fn gen_bytes_str(kb: u64) -> String {
-    let mut bytes_str = format!("{} kiB", kb);
-    if kb >= 1024 {
-        bytes_str = format!("{:.2} MiB", kb as f32 / 1024f32);
+pub fn gen_bytes_str(bytes: u64) -> String {
+    let mut bytes_str = format!("{} B", bytes);
+
+    if bytes >= 1024 {
+        bytes_str = format!("{:.2} KiB", bytes as f32 / 1024f32);
     }
 
-    if kb >= 1024 * 1024 {
-        bytes_str = format!("{:.2} GiB", kb as f32 / 1024f32 / 1024f32);
+    if bytes >= 1024 * 1024 {
+        bytes_str = format!("{:.2} MiB", bytes as f32 / 1024f32 / 1024f32);
+    }
+
+    if bytes >= 1024 * 1024 * 1024 {
+        bytes_str = format!("{:.2} GiB", bytes as f32 / 1024f32 / 1024f32 / 1024f32);
     }
 
     bytes_str

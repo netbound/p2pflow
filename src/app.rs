@@ -1,4 +1,7 @@
-use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
+use std::{
+    collections::HashMap,
+    net::{IpAddr, Ipv4Addr, Ipv6Addr},
+};
 
 use async_std::task::block_on;
 use libbpf_rs::{Map, MapFlags};
@@ -6,12 +9,12 @@ use tui::widgets::TableState;
 
 use crate::{net::Resolver, PeerV4, PeerV6, ValueType};
 
-// #[derive(Clone)]
 pub struct App<'a> {
     pub process_name: String,
     pub state: TableState,
-	pub sort_key: SortKey,
+    pub sort_key: SortKey,
     pub items: Items,
+    pub prev_bytes: HashMap<String, (u64, u64)>,
     pub v4_peers: Option<&'a Map>,
     pub v6_peers: Option<&'a Map>,
     pub resolver: Resolver,
@@ -22,8 +25,14 @@ pub struct Item {
     pub ip: IpAddr,
     pub is_v4: bool,
     pub port: u16,
+    // Total KiB received
     pub tot_rx: u64,
+    // Total KiB sent
     pub tot_tx: u64,
+    // Receive rate in bps
+    pub rx_rate: u64,
+    // Send rate in bps
+    pub tx_rate: u64,
 }
 
 pub struct Items {
@@ -33,7 +42,9 @@ pub struct Items {
 pub enum SortKey {
     TotalRx,
     TotalTx,
-	None
+    RxRate,
+    TxRate,
+    None,
 }
 
 impl Items {
@@ -43,13 +54,9 @@ impl Items {
 
     pub fn sort(&mut self, key: SortKey) {
         match key {
-            SortKey::TotalRx => self
-                .vec
-                .sort_by(|a, b| b.tot_rx.cmp(&a.tot_rx)),
-            SortKey::TotalTx => self
-                .vec
-                .sort_by(|a, b| b.tot_tx.cmp(&a.tot_tx)),
-			_ => {}
+            SortKey::TotalRx => self.vec.sort_by(|a, b| b.tot_rx.cmp(&a.tot_rx)),
+            SortKey::TotalTx => self.vec.sort_by(|a, b| b.tot_tx.cmp(&a.tot_tx)),
+            _ => {}
         }
     }
 }
@@ -59,8 +66,9 @@ impl<'a> App<'a> {
         App {
             process_name,
             state: TableState::default(),
-			sort_key: SortKey::None,
+            sort_key: SortKey::None,
             items: Items::new(),
+            prev_bytes: HashMap::new(),
             v4_peers: None,
             v6_peers: None,
             resolver: block_on(Resolver::new()),
@@ -90,16 +98,32 @@ impl<'a> App<'a> {
                 let val = v4_peers.lookup(&k, MapFlags::ANY).unwrap().unwrap();
                 plain::copy_from_bytes(&mut value, &val).expect("Couldn't decode value");
 
-                let kb_in = value.bytes_in / 1024;
-                let kb_out = value.bytes_out / 1024;
+                let b_rx = value.bytes_in;
+                let b_tx = value.bytes_out;
                 let ip = IpAddr::V4(Ipv4Addr::from(key.daddr.to_be()));
+
+                let mut rx_rate = 0;
+                let mut tx_rate = 0;
+                let k = format!("{}:{}", ip.to_string(), key.dport);
+                if let Some((prev_rx, prev_tx)) = self.prev_bytes.get(&k) {
+                    // Refresh rate is every 500 ms, so rate would be the difference times two
+                    rx_rate = (b_rx - prev_rx) * 2;
+                    tx_rate = (b_tx - prev_tx) * 2;
+                }
+
+                // Update values in prev map
+                let (prev_rx, prev_tx) = self.prev_bytes.entry(k).or_insert((0, 0));
+                *prev_rx = b_rx;
+                *prev_tx = b_tx;
 
                 self.items.vec.push(Item {
                     ip: ip,
                     is_v4: true,
                     port: key.dport,
-                    tot_rx: kb_in,
-                    tot_tx: kb_out,
+                    tot_rx: b_rx,
+                    tot_tx: b_tx,
+                    rx_rate,
+                    tx_rate,
                 });
             })
             .collect()
@@ -118,18 +142,34 @@ impl<'a> App<'a> {
                 let val = v6_peers.lookup(&k, MapFlags::ANY).unwrap().unwrap();
                 plain::copy_from_bytes(&mut value, &val).expect("Couldn't decode value");
 
-                let kb_in = value.bytes_in / 1024;
-                let kb_out = value.bytes_out / 1024;
+                let b_rx = value.bytes_in;
+                let b_tx = value.bytes_out;
 
                 let ipv6 = Ipv6Addr::from(key.daddr.to_be());
                 let ip = ipv6.to_ipv4().unwrap();
+
+                let mut rx_rate = 0;
+                let mut tx_rate = 0;
+                let k = format!("{}:{}", ip.to_string(), key.dport);
+                if let Some((prev_rx, prev_tx)) = self.prev_bytes.get(&k) {
+                    // Refresh rate is every 500 ms, so rate would be the difference times two
+                    rx_rate = (b_rx - prev_rx) * 2;
+                    tx_rate = (b_tx - prev_tx) * 2;
+                }
+
+                // Update values in prev map
+                let (prev_rx, prev_tx) = self.prev_bytes.entry(k).or_insert((0, 0));
+                *prev_rx = b_rx;
+                *prev_tx = b_tx;
 
                 self.items.vec.push(Item {
                     ip: ip.into(),
                     is_v4: false,
                     port: key.dport,
-                    tot_rx: kb_in,
-                    tot_tx: kb_out,
+                    tot_rx: b_rx,
+                    tot_tx: b_tx,
+                    rx_rate,
+                    tx_rate,
                 });
             })
             .collect()
@@ -176,7 +216,7 @@ impl<'a> App<'a> {
         self.state.select(Some(i));
     }
 
-	pub fn first(&mut self) {
-		self.state.select(Some(0));
-	}
+    pub fn first(&mut self) {
+        self.state.select(Some(0));
+    }
 }

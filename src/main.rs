@@ -36,9 +36,6 @@ struct Command {
     /// glibc path
     #[structopt(long, short, default_value = "/lib/x86_64-linux-gnu/libc.so.6")]
     glibc: String,
-    /// refresh interval in milliseconds (unused)
-    #[structopt(long, short, default_value = "250")]
-    interval: u64,
     /// process name
     #[structopt(long, short, default_value = "geth")]
     process: String,
