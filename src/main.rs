@@ -1,6 +1,4 @@
 use anyhow::{anyhow, bail, Result};
-use async_std::task::block_on;
-use libbpf_rs::Map;
 use object::Object;
 use object::ObjectSymbol;
 use plain::Plain;
@@ -8,17 +6,18 @@ use std::ffi::CString;
 use std::{fs, io, path::Path};
 use structopt::StructOpt;
 use termion::{event::Key, input::MouseTerminal, raw::IntoRawMode, screen::AlternateScreen};
-use tui::{backend::TermionBackend, widgets::TableState, Terminal};
+use tui::{backend::TermionBackend, Terminal};
 
+mod app;
 mod display;
 mod event;
 mod net;
 #[path = "bpf/.output/p2pflow.skel.rs"]
 mod p2pflow;
 
+use app::*;
 use display::*;
 use event::*;
-use net::*;
 use p2pflow::*;
 
 type PeerV4 = p2pflow_bss_types::peer_v4_t;
@@ -82,76 +81,6 @@ fn get_symbol_address(so_path: &str, fn_name: &str) -> Result<usize> {
     Ok(symbol.address() as usize)
 }
 
-#[derive(Clone)]
-pub struct App<'a> {
-    process_name: String,
-    state: TableState,
-    v4_peers: Option<&'a Map>,
-    v6_peers: Option<&'a Map>,
-    resolver: Resolver,
-}
-
-impl<'a> App<'a> {
-    fn new(process_name: String) -> App<'a> {
-        App {
-            process_name,
-            state: TableState::default(),
-            v4_peers: None,
-            v6_peers: None,
-            resolver: block_on(Resolver::new()),
-        }
-    }
-
-    fn set_v4_peers(&mut self, trackers_v4: &'a Map) {
-        self.v4_peers = Some(trackers_v4);
-    }
-
-    fn set_v6_peers(&mut self, trackers_v6: &'a Map) {
-        self.v6_peers = Some(trackers_v6);
-    }
-
-    fn table_len(&self) -> usize {
-        let mut len = 0;
-        if let Some(v4_peers) = self.v4_peers {
-            len += v4_peers.keys().count();
-        }
-
-        if let Some(v6_peers) = self.v6_peers {
-            len += v6_peers.keys().count();
-        }
-
-        len
-    }
-
-    pub fn next(&mut self) {
-        let i = match self.state.selected() {
-            Some(i) => {
-                if i >= self.table_len() - 1 {
-                    0
-                } else {
-                    i + 1
-                }
-            }
-            None => 0,
-        };
-        self.state.select(Some(i));
-    }
-
-    pub fn previous(&mut self) {
-        let i = match self.state.selected() {
-            Some(i) => {
-                if i == 0 {
-                    self.table_len() - 1
-                } else {
-                    i - 1
-                }
-            }
-            None => 0,
-        };
-        self.state.select(Some(i));
-    }
-}
-
 fn main() -> Result<()> {
     let opts = Command::from_args();
 
@@ -202,12 +131,20 @@ fn main() -> Result<()> {
     app.resolver.start();
 
     loop {
+        app.refresh();
+        if app.paused != true {
+            app.items.sort(SortKey::TotalRx);
+        }
+
         draw_terminal(&mut terminal, &mut app)?;
 
         match events.next()? {
             Event::Input(key) => match key {
                 Key::Char('q') | Key::Esc => {
                     break;
+                }
+                Key::Char('p') => {
+                    app.paused = !app.paused;
                 }
                 Key::Down | Key::Char('j') => {
                     app.next();
