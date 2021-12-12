@@ -13,11 +13,12 @@ use crate::{app::Item, net::Resolver, App};
 fn gen_rows<'a>(items: &Vec<Item>, resolver: &Resolver) -> Vec<Row<'a>> {
     let mut rows = Vec::new();
     for i in items {
+        let v = if i.is_v4 { "v4" } else { "v6" };
         let entry = vec![
             format!("{}:{}", i.ip.to_string(), i.port.to_string()),
+            v.to_owned(),
             resolver.resolve_ip(i.ip),
-            gen_bytes_str(i.tot_rx),
-            gen_bytes_str(i.tot_tx),
+            format!("{} / {}", gen_bytes_str(i.tot_tx), gen_bytes_str(i.tot_rx))
         ];
         let cells = entry.iter().map(|c| Cell::from(c.clone()));
         rows.push(Row::new(cells).height(1));
@@ -40,7 +41,7 @@ pub fn draw_terminal(
 
         let selected_style = Style::default().add_modifier(Modifier::REVERSED);
         let normal_style = Style::default().add_modifier(Modifier::BOLD);
-        let header_cells = ["Peer", "Name", "Total received", "Total sent"]
+        let header_cells = ["Peer", "Type", "Name", "Total tx / rx"]
             .iter()
             .map(|h| Cell::from(*h).style(Style::default().fg(Color::Yellow)));
         let header = Row::new(header_cells)
@@ -68,11 +69,10 @@ pub fn draw_terminal(
                     .title("Peer utilization"),
             )
             .highlight_style(selected_style)
-            // .highlight_symbol("* ")
             .widths(&[
                 Constraint::Percentage(20),
-                Constraint::Percentage(40),
-                Constraint::Percentage(20),
+                Constraint::Percentage(10),
+                Constraint::Percentage(50),
                 Constraint::Percentage(20),
             ]);
 

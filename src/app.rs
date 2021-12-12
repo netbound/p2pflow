@@ -10,7 +10,6 @@ use crate::{net::Resolver, PeerV4, PeerV6, ValueType};
 pub struct App<'a> {
     pub process_name: String,
     pub state: TableState,
-	pub paused: bool,
 	pub sort_key: SortKey,
     pub items: Items,
     pub v4_peers: Option<&'a Map>,
@@ -21,6 +20,7 @@ pub struct App<'a> {
 #[derive(Clone, Debug)]
 pub struct Item {
     pub ip: IpAddr,
+    pub is_v4: bool,
     pub port: u16,
     pub tot_rx: u64,
     pub tot_tx: u64,
@@ -59,7 +59,6 @@ impl<'a> App<'a> {
         App {
             process_name,
             state: TableState::default(),
-			paused: true,
 			sort_key: SortKey::None,
             items: Items::new(),
             v4_peers: None,
@@ -70,8 +69,12 @@ impl<'a> App<'a> {
 
     pub fn refresh(&mut self) {
         self.items.vec.clear();
-        self.set_v4_peers(self.v4_peers.unwrap());
-        self.set_v6_peers(self.v6_peers.unwrap());
+        if let Some(v4_peers) = self.v4_peers {
+            self.set_v4_peers(v4_peers);
+        }
+        if let Some(v6_peers) = self.v6_peers {
+            self.set_v4_peers(v6_peers);
+        }
     }
 
     pub fn set_v4_peers(&mut self, v4_peers: &'a Map) {
@@ -93,6 +96,7 @@ impl<'a> App<'a> {
 
                 self.items.vec.push(Item {
                     ip: ip,
+                    is_v4: true,
                     port: key.dport,
                     tot_rx: kb_in,
                     tot_tx: kb_out,
@@ -122,6 +126,7 @@ impl<'a> App<'a> {
 
                 self.items.vec.push(Item {
                     ip: ip.into(),
+                    is_v4: false,
                     port: key.dport,
                     tot_rx: kb_in,
                     tot_tx: kb_out,
