@@ -11,6 +11,7 @@ pub struct App<'a> {
     pub process_name: String,
     pub state: TableState,
 	pub paused: bool,
+	pub sort_key: SortKey,
     pub items: Items,
     pub v4_peers: Option<&'a Map>,
     pub v6_peers: Option<&'a Map>,
@@ -28,10 +29,11 @@ pub struct Item {
 pub struct Items {
     pub vec: Vec<Item>,
 }
-
+#[derive(Clone, Copy)]
 pub enum SortKey {
     TotalRx,
     TotalTx,
+	None
 }
 
 impl Items {
@@ -47,6 +49,7 @@ impl Items {
             SortKey::TotalTx => self
                 .vec
                 .sort_by(|a, b| b.tot_tx.cmp(&a.tot_tx)),
+			_ => {}
         }
     }
 }
@@ -57,6 +60,7 @@ impl<'a> App<'a> {
             process_name,
             state: TableState::default(),
 			paused: true,
+			sort_key: SortKey::None,
             items: Items::new(),
             v4_peers: None,
             v6_peers: None,

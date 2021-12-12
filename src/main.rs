@@ -132,9 +132,7 @@ fn main() -> Result<()> {
 
     loop {
         app.refresh();
-        if app.paused != true {
-            app.items.sort(SortKey::TotalRx);
-        }
+        app.items.sort(app.sort_key);
 
         draw_terminal(&mut terminal, &mut app)?;
 
@@ -143,9 +141,21 @@ fn main() -> Result<()> {
                 Key::Char('q') | Key::Esc => {
                     break;
                 }
-                Key::Char('s') => {
+                Key::Char('r') => {
                     app.first();
-                    app.paused = !app.paused;
+                    if let SortKey::TotalRx = app.sort_key {
+                        app.sort_key = SortKey::None
+                    } else {
+                        app.sort_key = SortKey::TotalRx;
+                    }
+                }
+                Key::Char('t') => {
+                    app.first();
+                    if let SortKey::TotalTx = app.sort_key {
+                        app.sort_key = SortKey::None
+                    } else {
+                        app.sort_key = SortKey::TotalTx;
+                    }
                 }
                 Key::Down | Key::Char('j') => {
                     app.next();
