@@ -143,7 +143,8 @@ fn main() -> Result<()> {
                 Key::Char('q') | Key::Esc => {
                     break;
                 }
-                Key::Char('p') => {
+                Key::Char('s') => {
+                    app.first();
                     app.paused = !app.paused;
                 }
                 Key::Down | Key::Char('j') => {

@@ -166,4 +166,8 @@ impl<'a> App<'a> {
         };
         self.state.select(Some(i));
     }
+
+	pub fn first(&mut self) {
+		self.state.select(Some(0));
+	}
 }
