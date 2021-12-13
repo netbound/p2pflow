@@ -3,7 +3,7 @@ APP = p2pflow
 .PHONY: install
 install:
 	cargo install --path .
-	sudo setcap cap_sys_admin+eip $(HOME)/.cargo/bin/$(APP)
+	sudo setcap cap_sys_admin,cap_sys_resource+eip $(HOME)/.cargo/bin/$(APP)
 
 .PHONY: vmlinux
 vmlinux:

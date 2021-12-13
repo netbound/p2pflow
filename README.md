@@ -5,6 +5,9 @@
 ![Demo GIF](./demo.gif)
 
 ## Requirements
+```bash
+sudo apt-get install pkg-config clang llvm libelf-dev libpcap-dev gcc-multilib build-essential linux-tools-$(uname -r)
+```
 
 * Rust
 
@@ -13,7 +16,7 @@ program into the kernel.
 * Up-to-date Linux kernel
 
 The project is built on technology like `CO-RE` and `BTF`, which is only
-available in more recent kernels (5.0-ish). Ubuntu 20.10 has configured and packaged all the required dependencies.
+available in more recent kernels (5.0-ish). Ubuntu 21.04 has configured and packaged all the required dependencies.
 * `vmlinux.h`
 
 `vmlinux.h` contains all the kernel definitions on your current machine, which we need in the BPF programs.
