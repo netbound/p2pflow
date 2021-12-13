@@ -18,8 +18,12 @@ fn gen_rows<'a>(items: &Vec<Item>, resolver: &Resolver) -> Vec<Row<'a>> {
             format!("{}:{}", i.ip.to_string(), i.port.to_string()),
             v.to_owned(),
             resolver.resolve_ip(i.ip),
-            format!("{}ps / {}ps", gen_bytes_str(i.tx_rate), gen_bytes_str(i.rx_rate)),
-            format!("{} / {}", gen_bytes_str(i.tot_tx), gen_bytes_str(i.tot_rx))
+            // format!(
+            //     "{}ps / {}ps",
+            //     gen_bytes_str(i.tx_rate),
+            //     gen_bytes_str(i.rx_rate)
+            // ),
+            format!("{} / {}", gen_bytes_str(i.tot_tx), gen_bytes_str(i.tot_rx)),
         ];
         let cells = entry.iter().map(|c| Cell::from(c.clone()));
         rows.push(Row::new(cells).height(1));
@@ -42,7 +46,7 @@ pub fn draw_terminal(
 
         let selected_style = Style::default().add_modifier(Modifier::REVERSED);
         let normal_style = Style::default().add_modifier(Modifier::BOLD);
-        let header_cells = ["Peer", "Type", "Name", "Rate tx / rx", "Total tx / rx"]
+        let header_cells = ["Peer", "Type", "Name", "Total tx / rx"]
             .iter()
             .map(|h| Cell::from(*h).style(Style::default().fg(Color::Yellow)));
         let header = Row::new(header_cells)
@@ -73,8 +77,8 @@ pub fn draw_terminal(
             .widths(&[
                 Constraint::Percentage(20),
                 Constraint::Percentage(10),
-                Constraint::Percentage(30),
-                Constraint::Percentage(20),
+                Constraint::Percentage(40),
+                // Constraint::Percentage(20),
                 Constraint::Percentage(20),
             ]);
 

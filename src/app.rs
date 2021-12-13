@@ -81,7 +81,7 @@ impl<'a> App<'a> {
             self.set_v4_peers(v4_peers);
         }
         if let Some(v6_peers) = self.v6_peers {
-            self.set_v4_peers(v6_peers);
+            self.set_v6_peers(v6_peers);
         }
     }
 
@@ -105,11 +105,6 @@ impl<'a> App<'a> {
                 let mut rx_rate = 0;
                 let mut tx_rate = 0;
                 let k = format!("{}:{}", ip.to_string(), key.dport);
-                if let Some((prev_rx, prev_tx)) = self.prev_bytes.get(&k) {
-                    // Refresh rate is every 500 ms, so rate would be the difference times two
-                    rx_rate = (b_rx - prev_rx) * 2;
-                    tx_rate = (b_tx - prev_tx) * 2;
-                }
 
                 // Update values in prev map
                 let (prev_rx, prev_tx) = self.prev_bytes.entry(k).or_insert((0, 0));
