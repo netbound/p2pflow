@@ -13,7 +13,7 @@ use crate::{app::Item, net::Resolver, App};
 fn gen_rows<'a>(items: &Vec<Item>, resolver: &Resolver) -> Vec<Row<'a>> {
     let mut rows = Vec::new();
     for i in items {
-        let v = if i.is_v4 { "v4" } else { "v6" };
+        let v = if i.is_v4 { "IPv4" } else { "IPv6" };
         let entry = vec![
             format!("{}:{}", i.ip.to_string(), i.port.to_string()),
             v.to_owned(),

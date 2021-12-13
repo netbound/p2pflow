@@ -191,7 +191,7 @@ int BPF_KPROBE(trace_tcp_cleanup_rbuf, struct sock *sk, int copied)
 SEC("tp_btf/inet_sock_set_state")
 int BPF_PROG(trace_inet_sock_set_state, struct sock *sk, int oldstate, int newstate)
 {
-	if (newstate == BPF_TCP_CLOSE || BPF_TCP_FIN_WAIT1)
+	if (newstate == BPF_TCP_CLOSE || BPF_TCP_FIN_WAIT1 || BPF_TCP_FIN_WAIT2 || BPF_TCP_CLOSE_WAIT)
 	{
 		kuid_t sock_uid = BPF_CORE_READ(sk, sk_uid);
 		struct peer_t *val = bpf_map_lookup_elem(&sockets, &sock_uid);
