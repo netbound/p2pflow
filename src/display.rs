@@ -77,9 +77,9 @@ pub fn draw_terminal(
             .widths(&[
                 Constraint::Percentage(20),
                 Constraint::Percentage(5),
-                Constraint::Percentage(40),
+                Constraint::Percentage(35),
                 Constraint::Percentage(20),
-                Constraint::Percentage(20),
+                Constraint::Percentage(25),
             ]);
 
         f.render_widget(header_paragraph, rects[0]);
