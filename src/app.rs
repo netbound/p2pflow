@@ -1,13 +1,17 @@
 use std::{
     collections::HashMap,
-    net::{IpAddr, Ipv4Addr, Ipv6Addr}, sync::{Mutex, Arc},
+    net::{IpAddr, Ipv4Addr, Ipv6Addr},
+    sync::{Arc, Mutex},
 };
 
 use async_std::task::block_on;
 use libbpf_rs::{Map, MapFlags};
 use tui::widgets::TableState;
 
-use crate::{net::{Resolver, start_rate_monitor}, PeerV4, PeerV6, ValueType};
+use crate::{
+    net::{RateMonitor, Resolver},
+    PeerV4, PeerV6, ValueType,
+};
 
 #[derive(Clone)]
 pub struct App<'a> {
@@ -19,6 +23,7 @@ pub struct App<'a> {
     pub v4_peers: Option<&'a Map>,
     pub v6_peers: Option<&'a Map>,
     pub resolver: Resolver,
+    pub rate_monitor: RateMonitor,
 }
 
 #[derive(Clone, Debug)]
@@ -75,13 +80,14 @@ impl<'a> App<'a> {
             v4_peers: None,
             v6_peers: None,
             resolver: block_on(Resolver::new()),
+            rate_monitor: RateMonitor::new(),
         }
     }
 
     /// Starts the DNS resolver and rate monitor
     pub fn start(&mut self) {
         self.resolver.start();
-        start_rate_monitor(Arc::clone(&self.items));
+        self.rate_monitor.start(Arc::clone(&self.items));
     }
 
     /// Clears all the items in current state, and reloads them
@@ -114,14 +120,18 @@ impl<'a> App<'a> {
                 let b_tx = value.bytes_out;
                 let ip = IpAddr::V4(Ipv4Addr::from(key.daddr.to_be()));
 
+                let (tx_rate, rx_rate) = self.rate_monitor.get_rates(&format!("{}:{}", ip, key.dport));
+
+                // TODO: this resets rates to 0 every time we refresh,
+                // so we can't display proper rates
                 self.items.lock().unwrap().vec.push(Item {
                     ip: ip,
                     is_v4: true,
                     port: key.dport,
                     tot_rx: b_rx,
                     tot_tx: b_tx,
-                    rx_rate: 0,
-                    tx_rate: 0,
+                    rx_rate,
+                    tx_rate,
                 });
             })
             .collect()
@@ -147,14 +157,16 @@ impl<'a> App<'a> {
                 let ipv6 = Ipv6Addr::from(key.daddr.to_be());
                 let ip = ipv6.to_ipv4().unwrap();
 
+                let (tx_rate, rx_rate) = self.rate_monitor.get_rates(&format!("{}:{}", ip, key.dport));
+
                 self.items.lock().unwrap().vec.push(Item {
                     ip: ip.into(),
                     is_v4: false,
                     port: key.dport,
                     tot_rx: b_rx,
                     tot_tx: b_tx,
-                    rx_rate: 0,
-                    tx_rate: 0,
+                    rx_rate,
+                    tx_rate,
                 });
             })
             .collect()
