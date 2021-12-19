@@ -67,22 +67,21 @@ impl<'a> Resolver {
 
 #[derive(Clone)]
 pub struct RateMonitor {
-    items: Option<Arc<Mutex<Items>>>,
     rates: Arc<Mutex<HashMap<String, (u64, u64)>>>,
 }
 
 impl RateMonitor {
     pub fn new() -> RateMonitor {
         RateMonitor {
-            items: None,
             rates: Default::default(),
         }
     }
 
+    /// Starts monitoring the items and calculates the bytes per second rate
     pub fn start(&mut self, items: Arc<Mutex<Items>>) {
-        self.items = Some(items.clone());
         let rates = self.rates.clone();
         thread::spawn(move || {
+            // Ring buffer to save previous stats
             let mut stats: HashMap<String, ArrayDeque<[(u64, u64); 10], arraydeque::Wrapping>> =
                 HashMap::new();
             loop {
@@ -92,6 +91,10 @@ impl RateMonitor {
                         arr.push_back((item.tot_tx, item.tot_rx));
                         let (mut tx_rate, mut rx_rate) = arr.back().unwrap_or(&(0, 0));
                         let last = arr.front().unwrap_or(&(0, 0));
+                        // calculation:
+                        // last item - first item = difference in bytes
+                        // divide this by the number of items in the buffer (one added each second)
+                        // and we have bytes per second.
                         tx_rate = (tx_rate - last.0) / arr.len() as u64;
                         rx_rate = (rx_rate - last.1) / arr.len() as u64;
                         rates.lock().unwrap().insert(key, (tx_rate, rx_rate));
