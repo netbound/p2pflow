@@ -18,11 +18,11 @@ fn gen_rows<'a>(items: &Vec<Item>, resolver: &Resolver) -> Vec<Row<'a>> {
             format!("{}:{}", i.ip.to_string(), i.port.to_string()),
             v.to_owned(),
             resolver.resolve_ip(i.ip),
-            // format!(
-            //     "{}ps / {}ps",
-            //     gen_bytes_str(i.tx_rate),
-            //     gen_bytes_str(i.rx_rate)
-            // ),
+            format!(
+                "{}ps / {}ps",
+                gen_bytes_str(i.tx_rate),
+                gen_bytes_str(i.rx_rate)
+            ),
             format!("{} / {}", gen_bytes_str(i.tot_tx), gen_bytes_str(i.tot_rx)),
         ];
         let cells = entry.iter().map(|c| Cell::from(c.clone()));
@@ -46,7 +46,7 @@ pub fn draw_terminal(
 
         let selected_style = Style::default().add_modifier(Modifier::REVERSED);
         let normal_style = Style::default().add_modifier(Modifier::BOLD);
-        let header_cells = ["Peer", "Type", "Name", "Total tx / rx"]
+        let header_cells = ["Peer", "Type", "Name", "tx / rx rate", "Total tx / rx"]
             .iter()
             .map(|h| Cell::from(*h).style(Style::default().fg(Color::Yellow)));
         let header = Row::new(header_cells)
@@ -54,7 +54,7 @@ pub fn draw_terminal(
             .height(1)
             .bottom_margin(1);
 
-        let rows = gen_rows(&app.items.vec, &app.resolver);
+        let rows = gen_rows(&app.items.lock().unwrap().vec, &app.resolver);
         let peer_count = rows.len();
 
         let header_text = Span::styled(
@@ -76,9 +76,9 @@ pub fn draw_terminal(
             .highlight_style(selected_style)
             .widths(&[
                 Constraint::Percentage(20),
-                Constraint::Percentage(10),
+                Constraint::Percentage(5),
                 Constraint::Percentage(40),
-                // Constraint::Percentage(20),
+                Constraint::Percentage(20),
                 Constraint::Percentage(20),
             ]);
 
@@ -88,7 +88,6 @@ pub fn draw_terminal(
 
     Ok(())
 }
-// }
 
 pub fn gen_bytes_str(bytes: u64) -> String {
     let mut bytes_str = format!("{} B", bytes);

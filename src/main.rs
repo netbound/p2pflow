@@ -125,11 +125,11 @@ fn main() -> Result<()> {
         app.set_v6_peers(trackers_v6);
     }
 
-    app.resolver.start();
+    app.start();
 
     loop {
         app.refresh();
-        app.items.sort(app.sort_key);
+        app.items.lock().unwrap().sort(app.sort_key);
 
         draw_terminal(&mut terminal, &mut app)?;
 

@@ -1,10 +1,14 @@
+use arraydeque::ArrayDeque;
 use async_std::task::spawn;
 use async_std_resolver::{proto::rr::Name, resolver_from_system_conf, AsyncStdResolver};
 use std::{
     collections::HashMap,
     net::IpAddr,
     sync::{mpsc, Arc, Mutex},
+    time::Duration, thread,
 };
+
+use crate::app::{Item, Items};
 
 #[derive(Debug, Clone)]
 pub struct Resolver {
@@ -61,6 +65,29 @@ impl<'a> Resolver {
     }
 }
 
+pub fn start_rate_monitor(items: Arc<Mutex<Items>>) {
+    thread::spawn(move || {
+        let mut stats: HashMap<String, ArrayDeque<[(u64, u64); 2], arraydeque::Wrapping>> =
+            HashMap::new();
+        loop {
+            for item in &mut items.lock().unwrap().vec {
+                let key = format!("{}:{}", item.ip, item.port);
+                if let Some(arr) = stats.get_mut(&key) {
+                    arr.push_back((item.tot_tx, item.tot_rx));
+                    let (mut tx_rate, mut rx_rate) = arr.back().unwrap_or(&(0, 0));
+                    let last = arr.front().unwrap_or(&(0, 0));
+                    tx_rate = (tx_rate - last.0) / 10;
+                    rx_rate = (rx_rate - last.1) / 10;
+                    item.tx_rate = tx_rate;
+                    item.rx_rate = rx_rate;
+                } else {
+                    stats.insert(key, ArrayDeque::new());
+                }
+            }
+            std::thread::sleep(Duration::from_secs(10));
+        }
+    });
+}
 #[cfg(test)]
 mod tests {
     use std::{net::Ipv4Addr, thread, time::Duration};

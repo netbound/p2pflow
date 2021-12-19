@@ -1,19 +1,20 @@
 use std::{
     collections::HashMap,
-    net::{IpAddr, Ipv4Addr, Ipv6Addr},
+    net::{IpAddr, Ipv4Addr, Ipv6Addr}, sync::{Mutex, Arc},
 };
 
 use async_std::task::block_on;
 use libbpf_rs::{Map, MapFlags};
 use tui::widgets::TableState;
 
-use crate::{net::Resolver, PeerV4, PeerV6, ValueType};
+use crate::{net::{Resolver, start_rate_monitor}, PeerV4, PeerV6, ValueType};
 
+#[derive(Clone)]
 pub struct App<'a> {
     pub process_name: String,
     pub state: TableState,
     pub sort_key: SortKey,
-    pub items: Items,
+    pub items: Arc<Mutex<Items>>,
     pub prev_bytes: HashMap<String, (u64, u64)>,
     pub v4_peers: Option<&'a Map>,
     pub v6_peers: Option<&'a Map>,
@@ -35,9 +36,11 @@ pub struct Item {
     pub tx_rate: u64,
 }
 
+#[derive(Clone)]
 pub struct Items {
     pub vec: Vec<Item>,
 }
+
 #[derive(Clone, Copy)]
 pub enum SortKey {
     TotalRx,
@@ -67,7 +70,7 @@ impl<'a> App<'a> {
             process_name,
             state: TableState::default(),
             sort_key: SortKey::None,
-            items: Items::new(),
+            items: Arc::new(Mutex::new(Items::new())),
             prev_bytes: HashMap::new(),
             v4_peers: None,
             v6_peers: None,
@@ -75,8 +78,16 @@ impl<'a> App<'a> {
         }
     }
 
+    /// Starts the DNS resolver and rate monitor
+    pub fn start(&mut self) {
+        self.resolver.start();
+        start_rate_monitor(Arc::clone(&self.items));
+    }
+
+    /// Clears all the items in current state, and reloads them
+    /// from the BPF maps.
     pub fn refresh(&mut self) {
-        self.items.vec.clear();
+        self.items.lock().unwrap().vec.clear();
         if let Some(v4_peers) = self.v4_peers {
             self.set_v4_peers(v4_peers);
         }
@@ -85,6 +96,7 @@ impl<'a> App<'a> {
         }
     }
 
+    /// Sets the v4_peers BPF map and parses entries to load into the items array.
     pub fn set_v4_peers(&mut self, v4_peers: &'a Map) {
         self.v4_peers = Some(v4_peers);
 
@@ -102,28 +114,20 @@ impl<'a> App<'a> {
                 let b_tx = value.bytes_out;
                 let ip = IpAddr::V4(Ipv4Addr::from(key.daddr.to_be()));
 
-                let mut rx_rate = 0;
-                let mut tx_rate = 0;
-                let k = format!("{}:{}", ip.to_string(), key.dport);
-
-                // Update values in prev map
-                let (prev_rx, prev_tx) = self.prev_bytes.entry(k).or_insert((0, 0));
-                *prev_rx = b_rx;
-                *prev_tx = b_tx;
-
-                self.items.vec.push(Item {
+                self.items.lock().unwrap().vec.push(Item {
                     ip: ip,
                     is_v4: true,
                     port: key.dport,
                     tot_rx: b_rx,
                     tot_tx: b_tx,
-                    rx_rate,
-                    tx_rate,
+                    rx_rate: 0,
+                    tx_rate: 0,
                 });
             })
             .collect()
     }
 
+    /// Sets the v6_peers BPF map and parses entries to load into the items array.
     pub fn set_v6_peers(&mut self, v6_peers: &'a Map) {
         self.v6_peers = Some(v6_peers);
 
@@ -143,46 +147,25 @@ impl<'a> App<'a> {
                 let ipv6 = Ipv6Addr::from(key.daddr.to_be());
                 let ip = ipv6.to_ipv4().unwrap();
 
-                let mut rx_rate = 0;
-                let mut tx_rate = 0;
-                let k = format!("{}:{}", ip.to_string(), key.dport);
-                if let Some((prev_rx, prev_tx)) = self.prev_bytes.get(&k) {
-                    // Refresh rate is every 500 ms, so rate would be the difference times two
-                    rx_rate = (b_rx - prev_rx) * 2;
-                    tx_rate = (b_tx - prev_tx) * 2;
-                }
-
-                // Update values in prev map
-                let (prev_rx, prev_tx) = self.prev_bytes.entry(k).or_insert((0, 0));
-                *prev_rx = b_rx;
-                *prev_tx = b_tx;
-
-                self.items.vec.push(Item {
+                self.items.lock().unwrap().vec.push(Item {
                     ip: ip.into(),
                     is_v4: false,
                     port: key.dport,
                     tot_rx: b_rx,
                     tot_tx: b_tx,
-                    rx_rate,
-                    tx_rate,
+                    rx_rate: 0,
+                    tx_rate: 0,
                 });
             })
             .collect()
     }
 
+    /// Returns the length of all the items.
     fn table_len(&self) -> usize {
-        let mut len = 0;
-        if let Some(v4_peers) = self.v4_peers {
-            len += v4_peers.keys().count();
-        }
-
-        if let Some(v6_peers) = self.v6_peers {
-            len += v6_peers.keys().count();
-        }
-
-        len
+        self.items.lock().unwrap().vec.len()
     }
 
+    /// Selects the next item in the table.
     pub fn next(&mut self) {
         let i = match self.state.selected() {
             Some(i) => {
@@ -197,6 +180,7 @@ impl<'a> App<'a> {
         self.state.select(Some(i));
     }
 
+    /// Selects the previous item in the table.
     pub fn previous(&mut self) {
         let i = match self.state.selected() {
             Some(i) => {
