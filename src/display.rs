@@ -54,7 +54,7 @@ pub fn draw_terminal(
             .height(1)
             .bottom_margin(1);
 
-        let rows = gen_rows(&app.items.vec, &app.resolver);
+        let rows = gen_rows(&app.items.lock().unwrap().vec, &app.resolver);
         let peer_count = rows.len();
 
         let header_text = Span::styled(

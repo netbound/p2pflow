@@ -1,6 +1,7 @@
 use std::{
     collections::HashMap,
     net::{IpAddr, Ipv4Addr, Ipv6Addr},
+    sync::{Arc, Mutex},
 };
 
 use async_std::task::block_on;
@@ -17,7 +18,7 @@ pub struct App<'a> {
     pub process_name: String,
     pub state: TableState,
     pub sort_key: SortKey,
-    pub items: Items,
+    pub items: Arc<Mutex<Items>>,
     pub prev_bytes: HashMap<String, (u64, u64)>,
     pub v4_peers: Option<&'a Map>,
     pub v6_peers: Option<&'a Map>,
@@ -74,7 +75,7 @@ impl<'a> App<'a> {
             process_name,
             state: TableState::default(),
             sort_key: SortKey::None,
-            items: Items::new(),
+            items: Arc::new(Mutex::new(Items::new())),
             prev_bytes: HashMap::new(),
             v4_peers: None,
             v6_peers: None,
@@ -86,13 +87,13 @@ impl<'a> App<'a> {
     /// Starts the DNS resolver and rate monitor
     pub fn start(&mut self) {
         self.resolver.start();
-        self.rate_monitor.start(self.items.clone());
+        self.rate_monitor.start(Arc::clone(&self.items));
     }
 
     /// Clears all the items in current state, and reloads them
     /// from the BPF maps.
     pub fn refresh(&mut self) {
-        self.items.vec.clear();
+        self.items.lock().unwrap().vec.clear();
         if let Some(v4_peers) = self.v4_peers {
             self.set_v4_peers(v4_peers);
         }
@@ -123,7 +124,7 @@ impl<'a> App<'a> {
 
                 // TODO: this resets rates to 0 every time we refresh,
                 // so we can't display proper rates
-                self.items.vec.push(Item {
+                self.items.lock().unwrap().vec.push(Item {
                     ip: ip,
                     is_v4: true,
                     port: key.dport,
@@ -158,7 +159,7 @@ impl<'a> App<'a> {
 
                 let (tx_rate, rx_rate) = self.rate_monitor.get_rates(&format!("{}:{}", ip, key.dport));
 
-                self.items.vec.push(Item {
+                self.items.lock().unwrap().vec.push(Item {
                     ip: ip.into(),
                     is_v4: false,
                     port: key.dport,
@@ -173,7 +174,7 @@ impl<'a> App<'a> {
 
     /// Returns the length of all the items.
     fn table_len(&self) -> usize {
-        self.items.vec.len()
+        self.items.lock().unwrap().vec.len()
     }
 
     /// Selects the next item in the table.
