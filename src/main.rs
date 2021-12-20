@@ -78,9 +78,7 @@ fn get_symbol_address(so_path: &str, fn_name: &str) -> Result<usize> {
     Ok(symbol.address() as usize)
 }
 
-fn main() -> Result<()> {
-    let opts = Command::from_args();
-
+fn build_skel(opts: &Command) -> Result<OpenP2pflowSkel<'static>> {
     let mut skel_builder = P2pflowSkelBuilder::default();
     if opts.verbose {
         skel_builder.obj_builder.debug(true);
@@ -99,6 +97,15 @@ fn main() -> Result<()> {
     }
 
     open_skel.rodata().process_name = buf;
+
+    Ok(open_skel)
+}
+
+fn main() -> Result<()> {
+    let opts = Command::from_args();
+
+    // BPF preparation
+    let open_skel = build_skel(&opts)?;
 
     let mut skel = open_skel.load()?;
     let _address = get_symbol_address(&opts.glibc, "getaddrinfo")?;
