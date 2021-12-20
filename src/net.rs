@@ -78,7 +78,8 @@ impl RateMonitor {
     }
 
     /// Starts monitoring the items and calculates the bytes per second rate
-    pub fn start(&mut self, items: Arc<Mutex<Items>>) {
+    pub fn start(&mut self, items: Items) {
+        let items = Arc::new(Mutex::new(items));
         let rates = self.rates.clone();
         thread::spawn(move || {
             // Ring buffer to save previous stats

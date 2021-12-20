@@ -136,7 +136,7 @@ fn main() -> Result<()> {
 
     loop {
         app.refresh();
-        app.items.lock().unwrap().sort(app.sort_key);
+        app.items.sort(app.sort_key);
 
         draw_terminal(&mut terminal, &mut app)?;
 
